@@ -51,37 +51,45 @@ sdt_inv_rxs_mask_path = os.path.join(test_output_dir, "sdt_inv_rxs_mask.nii.gz")
 sitk.WriteImage(sdt_inv_rxs_mask, sdt_inv_rxs_mask_path) ##for qa only
 
 
-
-# Save the distance transform - not needed? 
-#sitk.WriteImage(dist_img, 'distance_transform.nii.gz')
-
-
 ## get positive values of signed distance transform inside brain ;
 
 # Load the image as ndarray
 sdt_rxs_mask_data = sitk.GetArrayFromImage(sdt_rxs_mask)
 
-## multiply it by -1 somehow (does this work?)
+## multiply it by -1 
 sdt_rxs_mask_data_by_minus_one = sdt_rxs_mask_data * -1 
 
-# Threshold the image (this is thresholding it as a numpy array if I'm understanding correctly)
-## check if needs to be converted to image first
-thresholded_data = sitk.BinaryThreshold(sdt_rxs_mask_data_by_minus_one, lowerThreshold=0, upperThreshold=50000, insideValue=sdt_rxs_mask_data_by_minus_one, outsideValue=0)
+# Threshold the image
+## needs to be converted to image first
+sdt_rxs_mask_image_by_minus_one = sitk.GetImageFromArray(sdt_rxs_mask_data_by_minus_one)
+#thresholded_data = sitk.BinaryThreshold(sdt_rxs_mask_image_by_minus_one, lowerThreshold=0, upperThreshold=50000, insideValue=sdt_rxs_mask_image_by_minus_one, outsideValue=0)
 
-# Save the thresholded image
-thresholded_img = sitk.GetImageFromArray(thresholded_data)
-thresholded_img.CopyInformation(t1_img)
-sitk.WriteImage(thresholded_img, 'thresholded_.nii.gz')
+## this copy information is to ensure same orientation info 
+sdt_rxs_mask_image_by_minus_one.CopyInformation(rxs_mask)
+sdt_rxs_mask_image_by_minus_one_path = os.path.join(test_output_dir, "sdt_rxs_mask_image_by_minus_one.nii.gz") ##for qa only
+sitk.WriteImage(sdt_rxs_mask_image_by_minus_one, sdt_rxs_mask_image_by_minus_one_path) ##for qa only
 
+## this comes out as a binary mask. ?want a thresholded sdt image. multiply by image? see steps below for logic
+thresholded_img = sitk.BinaryThreshold(sdt_rxs_mask_image_by_minus_one, lowerThreshold=0, upperThreshold=50000)
+thresholded_img_path = os.path.join(test_output_dir, "thresholded_img.nii.gz") ##for qa only
+sitk.WriteImage(thresholded_img, thresholded_img_path) ##for qa only
+## cast mask as float so it can be multiplied by sdt image
+thresholded_img_float = sitk.Cast(thresholded_img, sitk.sitkFloat32)
+## multiply 
+pos_sdt_rxs_mask = sitk.Multiply(sdt_rxs_mask_image_by_minus_one, thresholded_img_float)
+pos_sdt_rxs_mask_path = os.path.join(test_output_dir, "pos_sdt_rxs_mask.nii.gz") ##for qa only
+sitk.WriteImage(pos_sdt_rxs_mask, pos_sdt_rxs_mask_path) ##for qa only
 
-## (not sure if this needs to be done in sitk or as a numpy array)
+## add the inverse mask sdt to pos mask
+sdt_all = sitk.Add(pos_sdt_rxs_mask, sdt_inv_rxs_mask)
+sdt_all_path = os.path.join(test_output_dir, "sdt_all.nii.gz") ##for qa only
+sitk.WriteImage(sdt_all, sdt_all_path) ##for qa only
 
-## from bash script:
-# fslmaths mask_processing/sdt_rxs_${mask} -mul -1 -thr 0 mask_processing/pos_sdt_rxs_${mask}
-# add the inverse mask signed distance transform to it ;
-# fslmaths mask_processing/pos_sdt_rxs_${mask} -add mask_processing/sdt_inv_rxs_${mask} mask_processing/sdt_all.nii.gz
-# echo add 2 so that the mask dilates by 2 so that the vessels on the surface may be captured ;
-# fslmaths mask_processing/sdt_all.nii.gz -add 2 mask_processing/sdt_all_plus_2.nii.gz
+# add 2 to dilate mask
+
+sdt_all_plus_2 = sitk.Add(sdt_all, 2)
+sdt_all_plus_2_path = os.path.join(test_output_dir, "sdt_all_plus_2.nii.gz") ##for qa only
+sitk.WriteImage(sdt_all_plus_2, sdt_all_plus_2_path) ##for qa only
 
 
 ### the next part is thresholding the mask a bunch of times 
