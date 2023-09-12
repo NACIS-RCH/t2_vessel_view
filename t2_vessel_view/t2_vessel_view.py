@@ -14,6 +14,7 @@ import sys
 import SimpleITK as sitk
 from nipype.interfaces.fsl import BET
 
+
 viewer = sitk.ImageViewer()
 viewer.SetFileExtension('.nii.gz')
 viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
@@ -23,6 +24,8 @@ viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
 test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
 rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
+input_t1_path = os.path.join(test_data_dir, "T1.nii.gz")
+input_flair_path = os.path.join(test_data_dir, "FLAIR.nii.gz")
 
 save_debug_images = True
 
@@ -31,7 +34,29 @@ def write_debug_image(image_object, output_file, output_directory = test_output_
         path = os.path.join(test_output_dir, output_file) 
         sitk.WriteImage(image_object, path)
 
-
+def preprocess_main_image(input_t1):
+    """
+    Processes main image.
+    
+    Parameters
+    ----------
+    
+    input_t1 : string
+        T1 image (here nii format but build in dicom?).
+        
+    Returns
+    -------
+    SimpleITK image object
+        Preprocessed T1 image.
+    
+    """
+    main_image = sitk.ReadImage(input_t1)
+    
+    ## probably include crop and reorient and n4 here?
+    ## find how to do in sitk/other python or fsl wrappers
+    ## upsample
+    
+    
 
 def main_mask_operations(resampled_mask):
     """
@@ -49,8 +74,8 @@ def main_mask_operations(resampled_mask):
         Postprocessed signed distance transform image.
     
     """
-    
-    rxs_mask = sitk.ReadImage(rxs_mask_path)
+    ## check this line
+    rxs_mask = sitk.ReadImage(resampled_mask)
     ## smooth mask with gaussian kernel size 3
     smoothed_rxs_mask = sitk.DiscreteGaussian(rxs_mask, 3.0)
     write_debug_image(smoothed_rxs_mask,"smoothed_rxs_mask.nii.gz")
@@ -107,23 +132,48 @@ def mask_erosions(processed_signed_distance):
     
     """
     erode_depths_list = [0.5, 1, 1.5, 2, 3]
+    ## make list of eroded mask file names?
+    eroded_masks_dict = {}
+    zero_padded_erode_depths_list = []
     
     for erode_depth in erode_depths_list:
         
         ## multiply erode depths by ten so they can be zero padded
-        erode_depth_times_ten = erode_depth * 10
+        erode_depth_times_ten = int(erode_depth * 10)
         
         ## zero pad as string
         zero_padded_erode_depth = f'{erode_depth_times_ten:03}'
+        zero_padded_erode_depths_list.append(zero_padded_erode_depth)
         
         ## threshold and binarise 
         
-    ### could return list of image object file names or whatever useful
-    
+        ## make file name, save in list maybe
+        eroded_mask_file_name = f'{zero_padded_erode_depth}_eroded_rxs_mask'
+        
+        ## threshold and binarise
+        eroded_rxs_mask = processed_signed_distance > erode_depth
+        eroded_rxs_mask_float = sitk.Cast(eroded_rxs_mask, sitk.sitkFloat32)
+        write_debug_image(eroded_rxs_mask_float,f'{zero_padded_erode_depth}_eroded_rxs_mask.nii.gz')
+        
+        ##smooth
+        smoothed_eroded_rxs_mask = sitk.DiscreteGaussian(eroded_rxs_mask_float, 3.0)
+        write_debug_image(smoothed_eroded_rxs_mask,f'{zero_padded_erode_depth}_smoothed_eroded_rxs_mask.nii.gz')
+        
+        bin_smoothed_eroded_rxs_mask = smoothed_eroded_rxs_mask > 0.5
+        bin_smoothed_eroded_rxs_mask_float = sitk.Cast(bin_smoothed_eroded_rxs_mask, sitk.sitkFloat32)
 
-### the next part is thresholding the mask a bunch of times 
-## can i store these as sitk image objects rather than writing them?
+        write_debug_image(bin_smoothed_eroded_rxs_mask_float,f'{zero_padded_erode_depth}_bin_smoothed_eroded_rxs_mask.nii.gz')
+
+        
+        ## put extra step in here for smoothing? 
+        eroded_masks_dict[eroded_mask_file_name] = bin_smoothed_eroded_rxs_mask_float
+    
+    ### also save masks as files in case option chosen
+    ## return dictionary with mask file names and objects, and zero padded erode depths for use in other file names
+    return (eroded_masks_dict, zero_padded_erode_depths_list)
+    
+preprocess_main_image(input_t1_path)
 
 sdt_all_plus_2 = main_mask_operations(rxs_mask_path)
-mask_erosions(sdt_all_plus_2)
+eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
 
