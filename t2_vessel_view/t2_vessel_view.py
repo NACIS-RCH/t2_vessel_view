@@ -12,7 +12,12 @@ import nibabel.freesurfer.mghformat as fsmgh
 import gzip
 import sys
 import SimpleITK as sitk
-from nipype.interfaces.fsl import BET
+#from nipype.interfaces.fsl import BET
+import nipype.interfaces.fsl as fsl
+#import nipype.interfaces.utility as util
+#import nipype.pipeline.engine as pe
+#import nipype.interfaces.io as nio
+
 
 
 viewer = sitk.ImageViewer()
@@ -24,7 +29,7 @@ viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
 test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
 rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
-input_t1_path = os.path.join(test_data_dir, "T1.nii.gz")
+input_t1_path = os.path.join(test_data_dir, "T1_raw.nii.gz")
 input_flair_path = os.path.join(test_data_dir, "FLAIR.nii.gz")
 
 save_debug_images = True
@@ -50,15 +55,75 @@ def preprocess_main_image(input_t1):
         Preprocessed T1 image.
     
     """
-    main_image = sitk.ReadImage(input_t1)
+    #main_image = sitk.ReadImage(input_t1)
     
-    ## probably include crop and reorient and n4 here?
-    ## find how to do in sitk/other python or fsl wrappers
-    ## upsample
+    ## include crop and reorient and n4 here
     
+    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py
+    #reorient = fsl.Reorient2Std()
+    #reorient.inputs.in_file = input_t1
+    #reorient.inputs.out_file = os.path.join(test_output_dir, "test_T1_ro.nii.gz")
+    #res = reorient.run()
     
+    crop = fsl.RobustFOV()
+    crop.inputs.in_file = input_t1
+    crop.inputs.brainsize = 160
+    crop.inputs.out_roi = os.path.join(test_output_dir, "T1_crop.nii.gz")
+    res = crop.run()
 
-def main_mask_operations(resampled_mask):
+    
+    ## sitk n4
+    main_image_crop = sitk.ReadImage(os.path.join(test_output_dir, "T1_crop.nii.gz"))
+    main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
+    write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
+    
+    ## then upsample with sitk
+    ## new spacing ( could include this as a variable)
+    new_spacing = [0.5, 0.5, 0.5]
+    
+    ## upsample (this apparently needs a lot more inputs)
+    main_image_crop_n4_rs = sitk.Resample(main_image_crop_n4, new_spacing, sitk.sitkLinear)
+    write_debug_image(main_image_crop_n4_rs,"main_image_crop_n4_rs.nii.gz")
+
+    
+    return main_image_crop_n4_rs
+
+    
+preprocess_main_image(input_t1_path)    
+
+
+
+def generate_mask(image_for_mask):
+    """
+    Runs BET on a postprocessed FLAIR or T1 to generate brain mask.
+    
+    Parameters
+    ----------
+    
+    image_for_mask : string
+        Postprocessed FLAIR or T1 image as .nii.gz.
+        
+    Returns
+    -------
+    SimpleITK image object
+        Binary brain mask image.
+    
+    """
+    
+    ## decide whether this is run on original or upsampled images
+    
+    ## this BET call works, partially. tested it on a raw T1.
+    #btr=fsl.BET()
+    #btr.inputs.in_file = input_t1
+    #btr.inputs.frac = 0.5
+    ## btr.inputs.mask (this didn't work)
+    ##btr.inputs.no_output (this didn't work)
+    #btr.inputs.out_file = os.path.join(test_output_dir, "test_bet_mask2.nii.gz")
+    #res = btr.run()
+   
+    return upsampled_mask
+
+def main_mask_operations(resampled_mask): 
     """
     Processes mask so that it can be eroded smoothly.
     
