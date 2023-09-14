@@ -1,8 +1,5 @@
 
 
-## starting with mask operations, i.e., line 279 of pseudocode
-
-
 import os
 import argparse
 import numpy as np
@@ -12,13 +9,13 @@ import nibabel.freesurfer.mghformat as fsmgh
 import gzip
 import sys
 import SimpleITK as sitk
-#from nipype.interfaces.fsl import BET
 import nipype.interfaces.fsl as fsl
+import ants
 #import nipype.interfaces.utility as util
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
-
+#print(os.environ["PYTHONPATH"])
 
 viewer = sitk.ImageViewer()
 viewer.SetFileExtension('.nii.gz')
@@ -58,10 +55,12 @@ def preprocess_main_image(input_t1):
     #main_image = sitk.ReadImage(input_t1)
     
     ## include crop and reorient and n4 here
-    
-    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py
+    ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
+    ## itself sits in though. 
+    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py but only if run in rstudio
     #reorient = fsl.Reorient2Std()
     #reorient.inputs.in_file = input_t1
+    ## this step does not work: it just outputs a file in the working directory
     #reorient.inputs.out_file = os.path.join(test_output_dir, "test_T1_ro.nii.gz")
     #res = reorient.run()
     
@@ -70,28 +69,68 @@ def preprocess_main_image(input_t1):
     crop.inputs.brainsize = 160
     crop.inputs.out_roi = os.path.join(test_output_dir, "T1_crop.nii.gz")
     res = crop.run()
-
     
-    ## sitk n4
+    ## sitk n4 (THIS WORKS)
     main_image_crop = sitk.ReadImage(os.path.join(test_output_dir, "T1_crop.nii.gz"))
-    main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
-    write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
+    #main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
+    #write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
     
     ## then upsample with sitk
     ## new spacing ( could include this as a variable)
     new_spacing = [0.5, 0.5, 0.5]
     
-    ## upsample (this apparently needs a lot more inputs)
-    main_image_crop_n4_rs = sitk.Resample(main_image_crop_n4, new_spacing, sitk.sitkLinear)
+    # Calculate the size of the resampled image based on the new spacing
+    new_size = [int(sz * spacing / new_spacing[idx]) for idx, (sz, spacing) in enumerate(zip(main_image_crop.GetSize(), main_image_crop.GetSpacing()))]
+
+    # Perform resampling
+    main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
     write_debug_image(main_image_crop_n4_rs,"main_image_crop_n4_rs.nii.gz")
 
-    
     return main_image_crop_n4_rs
 
+#preprocess_main_image(input_t1_path)
+
+def preprocess_flair(input_flair, preprocessed_main_image):
     
-preprocess_main_image(input_t1_path)    
+    ## load flair
+    flair_raw = sitk.ReadImage(input_flair)
+    flair_raw_float = sitk.Cast(flair_raw, sitk.sitkFloat32)
+        
+    ## sitk n4 flair
+    flair_n4 = sitk.N4BiasFieldCorrection(flair_raw_float)
+    flair_n4_path = os.path.join(test_output_dir, "flair_n4.nii.gz") 
+    sitk.WriteImage(flair_n4, flair_n4_path)
+    write_debug_image(flair_n4,"flair_n4_debug.nii.gz")
+    
+    # ## register the flair to the upsampled t1 using sitk ants wrapper
+    # ## separate to other sitk operations. save as image in between
+    # flair_n4_moving = sitk.ReadImage(flair_n4_path)
+    # resampled_t1_fixed = preprocessed_main_image
+    # ## create ANTs registration object
+    # registration = sitk.AntsRegistrationMethod()
+    # ## set fixed and moving images
+    # registration.SetFixedImage(resampled_t1_fixed)
+    # registration.SetMovingImage(flair_n4_moving)
+    # registration.SetMetricType("MI")
+    # registration.SetOptimiserType("GD")
+    # registration.SetTransformType("Rigid")
+    # registration.SetInitialTransform(sitk.CenteredTransformInitializer(resampled_t1_fixed, flair_n4_moving, sitk.AffineTransform(3)))
+    # registration.SetNumberofIterations(100)
+    # registration.SetSmoothingSigmasPerLevel([4,2,1])
+    # registration.SetShrinkFactorsPerLevel([4,2,1])
+    # ## execute the registration
+    # final_transform = registration.Execute(sitk.Cast(resampled_t1_fixed, sitk.sitkFloat32), sitk.Cast(flair_n4_moving, sitk.sitkFloat32))
+    # ## apply the transform
+    # registered_flair = sitk.Resample(flair_n4_moving, resampled_t1_fixed, final_transform, sitk.sitkLinear, 0.0, flair_n4_moving.GetPixelID())
+    # ## save image
+    # sitk.WriteImage(registered_flair, os.path.join(test_output_dir, "FLAIR_rxs.nii.gz"))
+    
+    fi = ants.image_read()
+    
+    
+    return registered_flair
 
-
+#preprocessed_flair = preprocess_flair(input_flair_path, preprocessed_main_image)
 
 def generate_mask(image_for_mask):
     """
@@ -228,7 +267,6 @@ def mask_erosions(processed_signed_distance):
         bin_smoothed_eroded_rxs_mask_float = sitk.Cast(bin_smoothed_eroded_rxs_mask, sitk.sitkFloat32)
 
         write_debug_image(bin_smoothed_eroded_rxs_mask_float,f'{zero_padded_erode_depth}_bin_smoothed_eroded_rxs_mask.nii.gz')
-
         
         ## put extra step in here for smoothing? 
         eroded_masks_dict[eroded_mask_file_name] = bin_smoothed_eroded_rxs_mask_float
@@ -236,8 +274,12 @@ def mask_erosions(processed_signed_distance):
     ### also save masks as files in case option chosen
     ## return dictionary with mask file names and objects, and zero padded erode depths for use in other file names
     return (eroded_masks_dict, zero_padded_erode_depths_list)
-    
-preprocess_main_image(input_t1_path)
+
+## preprocess t1    
+preprocessed_main_image = preprocess_main_image(input_t1_path)
+## preprocess flair and register to preprocessed t1
+preprocessed_flair = preprocess_flair(input_flair_path, preprocessed_main_image)
+
 
 sdt_all_plus_2 = main_mask_operations(rxs_mask_path)
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
