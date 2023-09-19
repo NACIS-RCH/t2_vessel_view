@@ -102,35 +102,42 @@ def preprocess_flair(input_flair, preprocessed_main_image):
     sitk.WriteImage(flair_n4, flair_n4_path)
     write_debug_image(flair_n4,"flair_n4_debug.nii.gz")
     
-    # ## register the flair to the upsampled t1 using sitk ants wrapper
-    # ## separate to other sitk operations. save as image in between
-    # flair_n4_moving = sitk.ReadImage(flair_n4_path)
-    # resampled_t1_fixed = preprocessed_main_image
-    # ## create ANTs registration object
-    # registration = sitk.AntsRegistrationMethod()
-    # ## set fixed and moving images
-    # registration.SetFixedImage(resampled_t1_fixed)
-    # registration.SetMovingImage(flair_n4_moving)
-    # registration.SetMetricType("MI")
-    # registration.SetOptimiserType("GD")
-    # registration.SetTransformType("Rigid")
-    # registration.SetInitialTransform(sitk.CenteredTransformInitializer(resampled_t1_fixed, flair_n4_moving, sitk.AffineTransform(3)))
-    # registration.SetNumberofIterations(100)
-    # registration.SetSmoothingSigmasPerLevel([4,2,1])
-    # registration.SetShrinkFactorsPerLevel([4,2,1])
-    # ## execute the registration
-    # final_transform = registration.Execute(sitk.Cast(resampled_t1_fixed, sitk.sitkFloat32), sitk.Cast(flair_n4_moving, sitk.sitkFloat32))
-    # ## apply the transform
-    # registered_flair = sitk.Resample(flair_n4_moving, resampled_t1_fixed, final_transform, sitk.sitkLinear, 0.0, flair_n4_moving.GetPixelID())
-    # ## save image
-    # sitk.WriteImage(registered_flair, os.path.join(test_output_dir, "FLAIR_rxs.nii.gz"))
-    
-    fi = ants.image_read()
-    
-    
-    return registered_flair
 
-#preprocessed_flair = preprocess_flair(input_flair_path, preprocessed_main_image)
+    flair_moving_image = ants.image_read(flair_n4_path)
+    ## not previously written out, have to write
+    preprocessed_main_image_path = os.path.join(test_output_dir, "preprocessed_main_image.nii.gz") 
+    sitk.WriteImage(preprocessed_main_image, preprocessed_main_image_path)
+    
+    t1_fixed_image = ants.image_read(preprocessed_main_image_path)
+    
+    ## affine registration
+    flair_to_t1_registration = ants.registration (fixed = t1_fixed_image, moving = flair_moving_image, type_of_transform = "Affine")
+    
+    ## apply transform
+    registered_flair = ants.apply_transforms(fixed = t1_fixed_image, moving = flair_moving_image, transformlist = flair_to_t1_registration["fwdtransforms"])
+    
+    # save registered flair
+    preprocessed_flair_path = os.path.join(test_output_dir, "preprocessed_flair.nii.gz")
+    ants.image_write(registered_flair, preprocessed_flair_path)
+    
+    return preprocessed_flair_path
+
+def process_t2(t2_input_path):
+    ## load
+    ## n4
+    ## register
+    ## square
+    
+    
+    return preprocessed_t2_path
+    
+def image_intensity_range(image_with_raw_range):
+    ## load
+    ## do arithmetic as per
+    ## save as sitk image?
+    
+    return image_with_new_intensity_range
+
 
 def generate_mask(image_for_mask):
     """
@@ -144,23 +151,35 @@ def generate_mask(image_for_mask):
         
     Returns
     -------
-    SimpleITK image object
-        Binary brain mask image.
+    string
+        Path to binary brain mask image.
     
     """
     
     ## decide whether this is run on original or upsampled images
     
     ## this BET call works, partially. tested it on a raw T1.
-    #btr=fsl.BET()
-    #btr.inputs.in_file = input_t1
-    #btr.inputs.frac = 0.5
+    btr=fsl.BET()
+    btr.inputs.in_file = image_for_mask
+    btr.inputs.frac = 0.5
     ## btr.inputs.mask (this didn't work)
     ##btr.inputs.no_output (this didn't work)
-    #btr.inputs.out_file = os.path.join(test_output_dir, "test_bet_mask2.nii.gz")
-    #res = btr.run()
-   
-    return upsampled_mask
+    hires_brain = os.path.join(test_output_dir, "test_bet_hires_brain.nii.gz")
+    btr.inputs.out_file = hires_brain
+    res = btr.run()
+    
+    hires_brain_image = sitk.ReadImage(hires_brain)
+    hires_brain_float = sitk.Cast(hires_brain_image, sitk.sitkFloat32)
+    
+    hires_mask = hires_brain_image > 0
+    hires_mask_float = sitk.Cast(hires_mask, sitk.sitkFloat32)
+    
+    hires_mask_path = os.path.join(test_output_dir, "test_bet_hires_mask.nii.gz")
+    sitk.WriteImage(hires_mask_float, hires_mask_path)
+
+    
+    return hires_mask_path
+
 
 def main_mask_operations(resampled_mask): 
     """
@@ -277,10 +296,18 @@ def mask_erosions(processed_signed_distance):
 
 ## preprocess t1    
 preprocessed_main_image = preprocess_main_image(input_t1_path)
+
 ## preprocess flair and register to preprocessed t1
 preprocessed_flair = preprocess_flair(input_flair_path, preprocessed_main_image)
 
+## generate mask
+mask_to_input = generate_mask(preprocessed_flair)
 
-sdt_all_plus_2 = main_mask_operations(rxs_mask_path)
+## process mask
+sdt_all_plus_2 = main_mask_operations(mask_to_input)
+
+## erode mask
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
+
+
 
