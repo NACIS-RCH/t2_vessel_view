@@ -25,9 +25,21 @@ viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 ## 
 test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
 test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
-rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
+#rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
 input_t1_path = os.path.join(test_data_dir, "T1_raw.nii.gz")
 input_flair_path = os.path.join(test_data_dir, "FLAIR.nii.gz")
+input_t2_sag_path = os.path.join(test_data_dir, "T2_tse_sag_l.nii.gz")
+input_t2_cor_path = os.path.join(test_data_dir, "T2_tse_cor.nii.gz")
+input_t2_tra_path = os.path.join(test_data_dir, "T2_tse_tra.nii.gz")
+
+
+#images_to_register = {
+#    "flair": input_flair_path,
+#    "t2_sag": input_t2_sag_path,
+#    "t2_tra": input_t2_tra_path,
+#    "t2_cor": input_t2_cor_path
+#}
+
 
 save_debug_images = True
 
@@ -84,52 +96,95 @@ def preprocess_main_image(input_t1):
 
     # Perform resampling
     main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
+    main_image_crop_n4_rs_path = os.path.join(test_output_dir, "Preprocessed_main_image.nii.gz")
+    ## need to write this out partly because ANTS needs it 
+    sitk.WriteImage(main_image_crop_n4_rs, main_image_crop_n4_rs_path)
+
     write_debug_image(main_image_crop_n4_rs,"main_image_crop_n4_rs.nii.gz")
 
-    return main_image_crop_n4_rs
+    return main_image_crop_n4_rs, main_image_crop_n4_rs_path
 
 #preprocess_main_image(input_t1_path)
 
-def preprocess_flair(input_flair, preprocessed_main_image):
+def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image_path):
+    """
+    Preprocesses images other than the main image using bias correction, and registration to main image.
     
-    ## load flair
-    flair_raw = sitk.ReadImage(input_flair)
-    flair_raw_float = sitk.Cast(flair_raw, sitk.sitkFloat32)
+    Parameters
+    ----------
+    
+    input_raw : string
+        input image path
         
-    ## sitk n4 flair
-    flair_n4 = sitk.N4BiasFieldCorrection(flair_raw_float)
-    flair_n4_path = os.path.join(test_output_dir, "flair_n4.nii.gz") 
-    sitk.WriteImage(flair_n4, flair_n4_path)
-    write_debug_image(flair_n4,"flair_n4_debug.nii.gz")
+    input_imagetype_string : string
+        string describing image type e.g., "flair", "t2_sag"
+        
+    Returns
+    -------
+    String
+        Preprocessed image path
     
-
-    flair_moving_image = ants.image_read(flair_n4_path)
-    ## not previously written out, have to write
-    preprocessed_main_image_path = os.path.join(test_output_dir, "preprocessed_main_image.nii.gz") 
-    sitk.WriteImage(preprocessed_main_image, preprocessed_main_image_path)
+    """
+    ## load im
+    im_raw = sitk.ReadImage(input_raw)
+    im_raw_float = sitk.Cast(im_raw, sitk.sitkFloat32)
+        
+    ## sitk n4 im
+    im_n4 = sitk.N4BiasFieldCorrection(im_raw_float)
+    im_n4_path = os.path.join(test_output_dir, f"{input_imagetype_string}_n4.nii.gz") 
+    sitk.WriteImage(im_n4, im_n4_path)
+    write_debug_image(im_n4,f"{input_imagetype_string}_n4_debug.nii.gz")
     
+    ## register to t1 using ants. have to load as new image
+    im_moving_image = ants.image_read(im_n4_path)
+    
+    ## load preprocessed t1
     t1_fixed_image = ants.image_read(preprocessed_main_image_path)
     
     ## affine registration
-    flair_to_t1_registration = ants.registration (fixed = t1_fixed_image, moving = flair_moving_image, type_of_transform = "Affine")
+    im_to_t1_registration = ants.registration (fixed = t1_fixed_image, moving = im_moving_image, type_of_transform = "Affine")
     
     ## apply transform
-    registered_flair = ants.apply_transforms(fixed = t1_fixed_image, moving = flair_moving_image, transformlist = flair_to_t1_registration["fwdtransforms"])
+    registered_im = ants.apply_transforms(fixed = t1_fixed_image, moving = im_moving_image, transformlist = im_to_t1_registration["fwdtransforms"])
     
-    # save registered flair
-    preprocessed_flair_path = os.path.join(test_output_dir, "preprocessed_flair.nii.gz")
-    ants.image_write(registered_flair, preprocessed_flair_path)
+    # save registered im
+    preprocessed_im_path = os.path.join(test_output_dir, f"preprocessed_{input_imagetype_string}.nii.gz")
+    ants.image_write(registered_im, preprocessed_im_path)
     
-    return preprocessed_flair_path
+    return preprocessed_im_path
 
-def process_t2(t2_input_path):
-    ## load
-    ## n4
-    ## register
-    ## square
+def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
+    """
+    Postprocesses T2 images: arithmetic operations.
     
+    Parameters
+    ----------
     
-    return preprocessed_t2_path
+    t2_input_path : string
+        Path to T2 image
+        
+    Returns
+    -------
+    String
+        Postprocessed T2 image path
+    
+    """
+    ## load preprocessed t2
+    t2_pre = sitk.ReadImage(preprocessed_t2_input_path)
+    
+    t2_inv = sitk.InvertIntensity(t2_pre)
+    write_debug_image(t2_inv,f"inv_{preprocessed_imagetype_string}.nii.gz")
+    
+    t2_inv_rescale = sitk.RescaleIntensity(t2_inv, outputMinimum = 0, outputMaximum = 1000)
+    write_debug_image(t2_inv_rescale,f"inv_rescale_{preprocessed_imagetype_string}.nii.gz")
+    
+    t2_inv_sqr = sitk.Pow(t2_inv_rescale, 2)
+    write_debug_image(t2_inv_sqr,f"inv_sqr_{preprocessed_imagetype_string}.nii.gz")
+
+    t2_inv_re_rescale = sitk.RescaleIntensity(t2_inv_sqr, outputMinimum = 0, outputMaximum = 1000)
+    write_debug_image(t2_inv_re_rescale,f"inv_sqr_re_rescale_{preprocessed_imagetype_string}.nii.gz")
+    
+    return t2_inv_rescale
     
 def image_intensity_range(image_with_raw_range):
     ## load
@@ -294,20 +349,36 @@ def mask_erosions(processed_signed_distance):
     ## return dictionary with mask file names and objects, and zero padded erode depths for use in other file names
     return (eroded_masks_dict, zero_padded_erode_depths_list)
 
+def multiply_masks_by_images():
+    ## multiply all the masks by all the images
+    
+    return 
+
+
 ## preprocess t1    
-preprocessed_main_image = preprocess_main_image(input_t1_path)
+preprocessed_main_image, preprocessed_main_image_path = preprocess_main_image(input_t1_path)
 
 ## preprocess flair and register to preprocessed t1
-preprocessed_flair = preprocess_flair(input_flair_path, preprocessed_main_image)
+preprocessed_flair = preprocess_n4_reg(input_flair_path, "flair", preprocessed_main_image_path)
+
+## preprocess t2 images
+preprocessed_t2_sag_path = preprocess_n4_reg(input_t2_sag_path, "t2_sag", preprocessed_main_image_path)
+preprocessed_t2_cor_path = preprocess_n4_reg(input_t2_cor_path, "t2_cor", preprocessed_main_image_path)
+preprocessed_t2_tra_path = preprocess_n4_reg(input_t2_tra_path, "t2_tra", preprocessed_main_image_path)
+
+## postprocess t2 images
+postprocessed_t2_sag_image = postprocess_t2(preprocessed_t2_sag_path, "t2_sag")
+postprocessed_t2_tra_image = postprocess_t2(preprocessed_t2_tra_path, "t2_tra")
+postprocessed_t2_cor_image = postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 
 ## generate mask
 mask_to_input = generate_mask(preprocessed_flair)
 
+#for image_type, image_type_path in images_to_register.items():
+    
 ## process mask
 sdt_all_plus_2 = main_mask_operations(mask_to_input)
 
 ## erode mask
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
-
-
 
