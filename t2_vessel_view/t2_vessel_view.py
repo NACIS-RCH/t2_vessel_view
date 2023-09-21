@@ -67,6 +67,11 @@ def write_debug_image(image_object, output_file, output_directory = test_output_
 ## convert to nii.gz
 ## reorient2std
 
+
+
+
+
+
 def convert_and_reorient(raw_input_file, input_filetype_string):
     """
     Converts to nii.gz and reorients to standard orientation
@@ -100,6 +105,67 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     
     return reoriented_im_path
 
+## make directory structure
+
+## base directory that will be from arguments
+base_directory = test_output_dir
+## define directory structure. add option to change main directory name or add suffix
+
+## specify output directories as variables
+main_t2vv_dir = "T2VesselView"
+eroded_nifti_dir = "T2VesselView/Eroded_nifti"
+eroded_nifti_t1_dir = "T2VesselView/Eroded_nifti/T1"
+eroded_nifti_t2_dir = "T2VesselView/Eroded_nifti/T2"
+eroded_nifti_flair_dir = "T2VesselView/Eroded_nifti/FLAIR"
+powerpoints_dir = "T2VesselView/PowerPoints"
+processing_dir = "T2VesselView/Processing"
+processing_figures_dir = "T2VesselView/Processing/Figures_for_QA"
+processing_log_dir = "T2VesselView/Processing/Log_files"
+processing_mask_dir = "T2VesselView/Processing/Masks"
+processed_t1_dir = "T2VesselView/Processing/Preprocessed_T1"
+processed_t2_dir = "T2VesselView/Processing/Preprocessed_T2"
+processed_flair_dir = "T2VesselView/Processing/Preprocessed_FLAIR"
+renders_dir = "T2VesselView/3D_renders_png"
+renders_t1_dir = "T2VesselView/3D_renders_png/T1_3D_renders"
+renders_t1_erode_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level"
+renders_t1_angle_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_angle"
+renders_t2_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders"
+renders_t2_erode_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level"
+renders_t2_angle_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle"
+
+## specify directories to be made
+directory_structure = [
+    main_t2vv_dir,
+    eroded_nifti_dir,
+    eroded_nifti_t1_dir,
+    eroded_nifti_t2_dir,
+    eroded_nifti_flair_dir,
+    powerpoints_dir,
+    processing_dir,
+    processing_figures_dir,
+    processing_log_dir,
+    processing_mask_dir,
+    processed_t1_dir,
+    processed_t2_dir,
+    processed_flair_dir,
+    renders_dir,
+    renders_t1_dir,
+    renders_t1_erode_dir,
+    renders_t1_angle_dir,
+    renders_t2_dir,
+    renders_t2_erode_dir,
+    renders_t2_angle_dir
+]
+
+## create directories
+for directory in directory_structure:
+    directory_path = os.path.join(base_directory, directory)
+    os.makedirs(directory_path, exist_ok = True)
+    
+## verify directory structure
+#for root, dirs, files in os.walk(base_directory):
+#    for dir in dirs:
+#        print(os.path.join(root, dir))
 
 
 def preprocess_main_image(input_t1):
@@ -207,7 +273,7 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     registered_im_resc = sitk.RescaleIntensity(sitk_registered_im_float, outputMinimum = 0, outputMaximum = 1000)
     
     preprocessed_im_path = os.path.join(test_output_dir, f"Preprocessed_{input_imagetype_string}.nii.gz")
-    sitk.WriteImage(registered_im_resc, processed_im_path)
+    sitk.WriteImage(registered_im_resc, preprocessed_im_path)
     
     return preprocessed_im_path
 
@@ -398,10 +464,40 @@ def mask_erosions(processed_signed_distance):
     ## return dictionary with mask file names and objects, and zero padded erode depths for use in other file names
     return (eroded_masks_dict, zero_padded_erode_depths_list)
 
-def multiply_masks_by_images():
-    ## multiply all the masks by all the images
+def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outputs):
+    """
+    Multiplies processed images by processed masks to generate eroded nifti images
     
+    Parameters
+    ----------
+    
+    t2_input_path : string
+        Path to T2 image
+        
+    Returns
+    -------
+    String
+        Postprocessed T2 image path
+    
+    """
+    ## not sure if have to feed this into function explicitly
+    
+    outdir = directory_for_outputs
+    
+    for depth in zero_padded_erode_depths_list:
+        mask_im = ## get mask from dictionary dunno how
+        im_to_erode = image_to_erode ## not sure if image or path, check
+        
+        eroded_im = ## multiply using sitk
+        ## possibly cast as float
+        
+        ##directory for outputs possibly path join with test outut dir inside function
+        eroded_im_path = os.path.join(directory_for_outputs, f"{depth}_{filetype_string}_eroded.nii.gz")
+        sitk.WriteImage(eroded_im_path, directory_for_outputs)
+        
     return 
+
+res_t1 = multiply_masks_by_images(preprocessed_main_image_path, "t1", eroded_nifti_t1_dir)
 
 
 reoriented_main_image_path = convert_and_reorient(input_t1_path, "t1")
@@ -439,3 +535,5 @@ sdt_all_plus_2 = main_mask_operations(mask_to_input)
 ## erode mask
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
 
+## erode nifti
+res = multiply_masks_by_images()
