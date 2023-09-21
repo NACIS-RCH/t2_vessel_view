@@ -22,6 +22,7 @@ viewer.SetFileExtension('.nii.gz')
 viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 ##viewer.Execute(file)
 
+
 ## 
 test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
 test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
@@ -33,20 +34,73 @@ input_t2_cor_path = os.path.join(test_data_dir, "T2_tse_cor.nii.gz")
 input_t2_tra_path = os.path.join(test_data_dir, "T2_tse_tra.nii.gz")
 
 
-#images_to_register = {
-#    "flair": input_flair_path,
-#    "t2_sag": input_t2_sag_path,
-#    "t2_tra": input_t2_tra_path,
-#    "t2_cor": input_t2_cor_path
-#}
-
-
 save_debug_images = True
 
 def write_debug_image(image_object, output_file, output_directory = test_output_dir):
     if save_debug_images:
         path = os.path.join(test_output_dir, output_file) 
         sitk.WriteImage(image_object, path)
+
+
+
+
+## here something like
+## if inputvariable is not None:
+## append string descriptor and file path to dictionary
+## then do something like for string, path in dictionary, preprocess things
+
+## check file exists in location
+## check file type?
+## check image dimensions?
+## for testing, use hard coded version
+
+
+#images_to_input = {
+#    "flair": input_flair_path,
+#    "t2_sag": input_t2_sag_path,
+#    "t2_tra": input_t2_tra_path,
+#    "t2_cor": input_t2_cor_path
+#}
+
+## handle input files
+## check if nifti or dicom or otherwise
+## convert to nii.gz
+## reorient2std
+
+def convert_and_reorient(raw_input_file, input_filetype_string):
+    """
+    Converts to nii.gz and reorients to standard orientation
+    
+    Parameters
+    ----------
+    
+    raw_input_file : string
+        Path to raw input file
+        
+    Returns
+    -------
+    String
+        Path to converted reoriented file
+    
+    """
+    ## use nibabel to convert to nifti if not done earlier
+    
+    
+    ## reorient
+    ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
+    ## itself sits in though. 
+    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py but only if run in rstudio
+    reorient = fsl.Reorient2Std()
+    reorient.inputs.in_file = raw_input_file
+    ## this works if the output type is specified but it also outputs a file with "to_ROI" suffix in the working directory
+    reorient.inputs.output_type = 'NIFTI_GZ'
+    reoriented_im_path = os.path.join(test_output_dir, f"{input_filetype_string}_ro.nii.gz")
+    reorient.inputs.out_file = reoriented_im_path
+    res = reorient.run()
+    
+    return reoriented_im_path
+
+
 
 def preprocess_main_image(input_t1):
     """
@@ -64,18 +118,9 @@ def preprocess_main_image(input_t1):
         Preprocessed T1 image.
     
     """
-    #main_image = sitk.ReadImage(input_t1)
     
-    ## include crop and reorient and n4 here
-    ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
-    ## itself sits in though. 
-    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py but only if run in rstudio
-    #reorient = fsl.Reorient2Std()
-    #reorient.inputs.in_file = input_t1
-    ## this step does not work: it just outputs a file in the working directory
-    #reorient.inputs.out_file = os.path.join(test_output_dir, "test_T1_ro.nii.gz")
-    #res = reorient.run()
-    
+    ## crop using fsl robustfov in nipype. 
+    ## this still outputs a "to_ROI" suffix file, find how to stop that
     crop = fsl.RobustFOV()
     crop.inputs.in_file = input_t1
     crop.inputs.brainsize = 160
@@ -96,13 +141,16 @@ def preprocess_main_image(input_t1):
 
     # Perform resampling
     main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
-    main_image_crop_n4_rs_path = os.path.join(test_output_dir, "Preprocessed_main_image.nii.gz")
+    
+    main_image_crop_n4_rs_resc = sitk.RescaleIntensity(main_image_crop_n4_rs, outputMinimum = 0, outputMaximum = 1000)
+    
+    main_image_crop_n4_rs_resc_path = os.path.join(test_output_dir, "Preprocessed_main_image.nii.gz")
     ## need to write this out partly because ANTS needs it 
-    sitk.WriteImage(main_image_crop_n4_rs, main_image_crop_n4_rs_path)
+    sitk.WriteImage(main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path)
 
-    write_debug_image(main_image_crop_n4_rs,"main_image_crop_n4_rs.nii.gz")
+    write_debug_image(main_image_crop_n4_rs_resc,"main_image_crop_n4_rs_resc.nii.gz")
 
-    return main_image_crop_n4_rs, main_image_crop_n4_rs_path
+    return main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path
 
 #preprocess_main_image(input_t1_path)
 
@@ -146,10 +194,20 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     
     ## apply transform
     registered_im = ants.apply_transforms(fixed = t1_fixed_image, moving = im_moving_image, transformlist = im_to_t1_registration["fwdtransforms"])
+
     
-    # save registered im
-    preprocessed_im_path = os.path.join(test_output_dir, f"preprocessed_{input_imagetype_string}.nii.gz")
-    ants.image_write(registered_im, preprocessed_im_path)
+    # save registered im (this could be a temp file, see how that works)
+    registered_im_path = os.path.join(test_output_dir, f"registered_{input_imagetype_string}.nii.gz")
+    ants.image_write(registered_im, registered_im_path)
+    
+     
+    ## rescale image intensities. needs to have sitk image loaded not ants image
+    sitk_registered_im = sitk.ReadImage(registered_im_path)
+    sitk_registered_im_float = sitk.Cast(sitk_registered_im, sitk.sitkFloat32)
+    registered_im_resc = sitk.RescaleIntensity(sitk_registered_im_float, outputMinimum = 0, outputMaximum = 1000)
+    
+    preprocessed_im_path = os.path.join(test_output_dir, f"Preprocessed_{input_imagetype_string}.nii.gz")
+    sitk.WriteImage(registered_im_resc, processed_im_path)
     
     return preprocessed_im_path
 
@@ -186,13 +244,6 @@ def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
     
     return t2_inv_rescale
     
-def image_intensity_range(image_with_raw_range):
-    ## load
-    ## do arithmetic as per
-    ## save as sitk image?
-    
-    return image_with_new_intensity_range
-
 
 def generate_mask(image_for_mask):
     """
@@ -234,7 +285,6 @@ def generate_mask(image_for_mask):
 
     
     return hires_mask_path
-
 
 def main_mask_operations(resampled_mask): 
     """
@@ -297,7 +347,6 @@ def main_mask_operations(resampled_mask):
 
     return sdt_all_plus_2
 
-
 def mask_erosions(processed_signed_distance):
     """
     Erodes the mask at a series of depths.
@@ -355,16 +404,24 @@ def multiply_masks_by_images():
     return 
 
 
+reoriented_main_image_path = convert_and_reorient(input_t1_path, "t1")
+reoriented_flair_path = convert_and_reorient(input_flair_path, "flair")
+reoriented_t2_sag_path = convert_and_reorient(input_t2_sag_path, "t2_sag")
+reoriented_t2_cor_path = convert_and_reorient(input_t2_cor_path, "t2_cor")
+reoriented_t2_tra_path = convert_and_reorient(input_t2_tra_path, "t2_tra")
+
+
+
 ## preprocess t1    
-preprocessed_main_image, preprocessed_main_image_path = preprocess_main_image(input_t1_path)
+preprocessed_main_image, preprocessed_main_image_path = preprocess_main_image(reoriented_main_image_path)
 
 ## preprocess flair and register to preprocessed t1
-preprocessed_flair = preprocess_n4_reg(input_flair_path, "flair", preprocessed_main_image_path)
+preprocessed_flair = preprocess_n4_reg(reoriented_flair_path, "flair", preprocessed_main_image_path)
 
 ## preprocess t2 images
-preprocessed_t2_sag_path = preprocess_n4_reg(input_t2_sag_path, "t2_sag", preprocessed_main_image_path)
-preprocessed_t2_cor_path = preprocess_n4_reg(input_t2_cor_path, "t2_cor", preprocessed_main_image_path)
-preprocessed_t2_tra_path = preprocess_n4_reg(input_t2_tra_path, "t2_tra", preprocessed_main_image_path)
+preprocessed_t2_sag_path = preprocess_n4_reg(reoriented_t2_sag_path, "t2_sag", preprocessed_main_image_path)
+preprocessed_t2_cor_path = preprocess_n4_reg(reoriented_t2_cor_path, "t2_cor", preprocessed_main_image_path)
+preprocessed_t2_tra_path = preprocess_n4_reg(reoriented_t2_tra_path, "t2_tra", preprocessed_main_image_path)
 
 ## postprocess t2 images
 postprocessed_t2_sag_image = postprocess_t2(preprocessed_t2_sag_path, "t2_sag")
@@ -375,7 +432,7 @@ postprocessed_t2_cor_image = postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 mask_to_input = generate_mask(preprocessed_flair)
 
 #for image_type, image_type_path in images_to_register.items():
-    
+
 ## process mask
 sdt_all_plus_2 = main_mask_operations(mask_to_input)
 
