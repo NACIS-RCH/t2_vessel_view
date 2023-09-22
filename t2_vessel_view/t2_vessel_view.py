@@ -70,8 +70,6 @@ def write_debug_image(image_object, output_file, output_directory = test_output_
 
 
 
-
-
 def convert_and_reorient(raw_input_file, input_filetype_string):
     """
     Converts to nii.gz and reorients to standard orientation
@@ -99,6 +97,9 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     reorient.inputs.in_file = raw_input_file
     ## this works if the output type is specified but it also outputs a file with "to_ROI" suffix in the working directory
     reorient.inputs.output_type = 'NIFTI_GZ'
+    ## this line apparently needed to prevent temp files with "to_ROI" suffix being written out
+    ## does not work, also no documentation.
+    #reorient.inputs.generate_report = False
     reoriented_im_path = os.path.join(test_output_dir, f"{input_filetype_string}_ro.nii.gz")
     reorient.inputs.out_file = reoriented_im_path
     res = reorient.run()
@@ -190,6 +191,8 @@ def preprocess_main_image(input_t1):
     crop = fsl.RobustFOV()
     crop.inputs.in_file = input_t1
     crop.inputs.brainsize = 160
+    ## this doesn't work but there's no documentation for an alternative
+    #crop.inputs.generate_report = False
     crop.inputs.out_roi = os.path.join(test_output_dir, "T1_crop.nii.gz")
     res = crop.run()
     
@@ -440,7 +443,7 @@ def mask_erosions(processed_signed_distance):
         
         ## threshold and binarise 
         
-        ## make file name, save in list maybe
+        ## make file name, save in list. this is not the final mask but works as dictionary key
         eroded_mask_file_name = f'{zero_padded_erode_depth}_eroded_rxs_mask'
         
         ## threshold and binarise
@@ -467,37 +470,51 @@ def mask_erosions(processed_signed_distance):
 def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outputs):
     """
     Multiplies processed images by processed masks to generate eroded nifti images
-    
+
     Parameters
     ----------
-    
-    t2_input_path : string
-        Path to T2 image
+
+    image_to_erode : simple itk image object
+        preprocessed main image sitk object
         
+    filetype_string : string
+        String descriptor of image modality, e.g., "T1", "T2_sag".
+
     Returns
     -------
-    String
-        Postprocessed T2 image path
-    
-    """
-    ## not sure if have to feed this into function explicitly
-    
-    outdir = directory_for_outputs
-    
-    for depth in zero_padded_erode_depths_list:
-        mask_im = ## get mask from dictionary dunno how
-        im_to_erode = image_to_erode ## not sure if image or path, check
-        
-        eroded_im = ## multiply using sitk
-        ## possibly cast as float
-        
-        ##directory for outputs possibly path join with test outut dir inside function
-        eroded_im_path = os.path.join(directory_for_outputs, f"{depth}_{filetype_string}_eroded.nii.gz")
-        sitk.WriteImage(eroded_im_path, directory_for_outputs)
-        
-    return 
+    ?String
+        ? path
 
-res_t1 = multiply_masks_by_images(preprocessed_main_image_path, "t1", eroded_nifti_t1_dir)
+    """
+
+    ## Output directory from directory structure, within 'Eroded_nifti' dir
+    eroded_outdir = os.path.join(test_output_dir, directory_for_outputs)
+    
+    ## sitk image object, image to erode
+    im_to_erode = image_to_erode 
+    
+    ## loop through erosion depths 
+    for depth in zero_padded_erode_depths_list:
+        ## match erode depths to keys in dictionary
+        full_key = depth + "_eroded_rxs_mask"
+        
+        if full_key in eroded_masks_dict:
+            
+            mask_im = eroded_masks_dict[full_key]
+            mask_im_float = sitk.Cast(mask_im, sitk.sitkFloat32)
+            
+            eroded_im = sitk.Multiply(im_to_erode, mask_im_float)
+            
+            ## save to output dir
+            eroded_im_path = os.path.join(eroded_outdir, f"{depth}_eroded_{filetype_string}.nii.gz")
+            sitk.WriteImage(eroded_im, eroded_im_path)
+            
+            
+        else: 
+            print(f"{full_key} not found in masks dictionary")
+
+
+    return
 
 
 reoriented_main_image_path = convert_and_reorient(input_t1_path, "t1")
@@ -536,4 +553,6 @@ sdt_all_plus_2 = main_mask_operations(mask_to_input)
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
 
 ## erode nifti
-res = multiply_masks_by_images()
+res_t1 = multiply_masks_by_images(preprocessed_main_image, "t1", eroded_nifti_t1_dir)
+res_t2_sag = multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", eroded_nifti_t2_dir)
+
