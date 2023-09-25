@@ -15,6 +15,9 @@ import ants
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
+## import modules within current package
+from t2_vessel_view.t2_vessel_view import dir_structure
+
 #print(os.environ["PYTHONPATH"])
 
 viewer = sitk.ImageViewer()
@@ -516,14 +519,12 @@ def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outp
 
     return
 
-
+## reorient inputs to standard orientation 
 reoriented_main_image_path = convert_and_reorient(input_t1_path, "t1")
 reoriented_flair_path = convert_and_reorient(input_flair_path, "flair")
 reoriented_t2_sag_path = convert_and_reorient(input_t2_sag_path, "t2_sag")
 reoriented_t2_cor_path = convert_and_reorient(input_t2_cor_path, "t2_cor")
 reoriented_t2_tra_path = convert_and_reorient(input_t2_tra_path, "t2_tra")
-
-
 
 ## preprocess t1    
 preprocessed_main_image, preprocessed_main_image_path = preprocess_main_image(reoriented_main_image_path)
@@ -555,4 +556,5 @@ eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
 ## erode nifti
 res_t1 = multiply_masks_by_images(preprocessed_main_image, "t1", eroded_nifti_t1_dir)
 res_t2_sag = multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", eroded_nifti_t2_dir)
+## other t2s? in same or separate dirs?
 
