@@ -4,6 +4,10 @@ import os
 
 ## make directory structure
 
+
+## use temporary dir for development
+test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
+
 ## base directory that will be from arguments
 base_directory = test_output_dir
 ## define directory structure. add option to change main directory name or add suffix

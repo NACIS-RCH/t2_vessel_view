@@ -16,7 +16,7 @@ import ants
 #import nipype.interfaces.io as nio
 
 ## import modules within current package
-from t2_vessel_view.t2_vessel_view import dir_structure
+from . import dir_structure
 
 #print(os.environ["PYTHONPATH"])
 
