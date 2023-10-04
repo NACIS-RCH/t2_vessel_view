@@ -10,6 +10,11 @@ import sys
 import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
+
+## import hull function from other script
+#from t2vesselviewcode.make_mask_convex_hull import make_hull_mask
+
+
 #import nipype.interfaces.utility as util
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
@@ -357,15 +362,20 @@ def generate_mask(image_for_mask):
     ## btr.inputs.mask (this didn't work)
     ##btr.inputs.no_output (this didn't work)
     hires_brain = os.path.join(test_output_dir, "test_bet_hires_brain.nii.gz")
+    ## this can only seem to output non-binary brain extracted image
     btr.inputs.out_file = hires_brain
     res = btr.run()
     
     hires_brain_image = sitk.ReadImage(hires_brain)
     hires_brain_float = sitk.Cast(hires_brain_image, sitk.sitkFloat32)
-    
+    ## binarise 
     hires_mask = hires_brain_image > 0
+    ## make float
     hires_mask_float = sitk.Cast(hires_mask, sitk.sitkFloat32)
     
+    ## perform hull operations on mask
+    ## **check this imported function works
+    # hires_hull_mask = make_hull_mask(hires_mask_float)[1]
     hires_mask_path = os.path.join(test_output_dir, "test_bet_hires_mask.nii.gz")
     sitk.WriteImage(hires_mask_float, hires_mask_path)
 

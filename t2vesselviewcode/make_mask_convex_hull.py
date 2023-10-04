@@ -8,6 +8,7 @@ from scipy.spatial import Delaunay
 import argparse
 import SimpleITK as sitk
 
+
 test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
 test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
 mask_path = os.path.join(test_data_dir, "bet_n4_rFLAIR_0.5_mask.nii.gz")
@@ -118,9 +119,9 @@ def make_hull_mask(regular_mask):
     top_hull_img = sitk.ReadImage(os.path.join(test_output_dir, "hull_top_mask.nii.gz"))
     
     ## scaling factors
-    x_scale = 0.7
+    x_scale = 1.3
     y_scale = 1.0
-    z_scale = 1.3
+    z_scale = 0.8
     
     ## make an affine transform
     affine_transform = sitk.AffineTransform(3)
@@ -130,13 +131,24 @@ def make_hull_mask(regular_mask):
     #affine_transform.SetOutputOrigin(top_hull_img.GetOrigin())
     
     ## resample using the affine transform
-    squished_mask = sitk.Resample(top_hull_img, top_hull_img.GetSize(), affine_transform, sitk.sitkNearestNeighbor, top_hull_img.GetPixelID())
+    squished_mask = sitk.Resample(top_hull_img, top_hull_img.GetSize(), affine_transform, sitk.sitkNearestNeighbor, top_hull_img.GetOrigin(), top_hull_img.GetSpacing(), top_hull_img.GetDirection(), 0.0, top_hull_img.GetPixelID())
+    sitk.WriteImage(squished_mask, os.path.join(test_output_dir, "test_squished_mask.nii.gz"))
+    
+    ## another example 
+    ## main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
     
     squished_multiplied_mask = sitk.Multiply(top_hull_img, squished_mask)
+    sitk.WriteImage(squished_multiplied_mask, os.path.join(test_output_dir, "squished_multiplied_mask.nii.gz"))
     
-    test_final_hull_mask = squished_multiplied_mask + mask_nii_data
+    squished_multiplied_mask_float = sitk.Cast(squished_multiplied_mask, sitk.sitkFloat32)
+    mask_nii_sitk = sitk.ReadImage(mask_path)
+    mask_nii_sitk_float = sitk.Cast(mask_nii_sitk, sitk.sitkFloat32)
     
-    sitk.WriteImage(test_final_hull_mask, os.path.join(test_output_dir, "test_final_hull_mask.nii.gz"))
+    test_final_hull_mask = sitk.Add(squished_multiplied_mask_float, mask_nii_sitk_float)
+    test_final_hull_mask_bin = test_final_hull_mask > 0
+    test_final_hull_mask_bin_float = sitk.Cast(test_final_hull_mask_bin, sitk.sitkFloat32)
+    
+    sitk.WriteImage(test_final_hull_mask_bin_float, os.path.join(test_output_dir, "test_final_hull_mask.nii.gz"))
     
     return out_top_hull_nii, test_final_hull_mask
 
