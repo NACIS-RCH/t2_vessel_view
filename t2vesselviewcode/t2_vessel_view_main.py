@@ -26,6 +26,7 @@ import ants
 ## this works now but will have to reinstall on upper directory later
 
 from t2vesselviewcode import dir_structure
+#from . import dir_structure
 
 # This still does not work. it gives error saying, "attempted relative import with no known parent package"
 ## something to do with pythonpath??
@@ -124,60 +125,60 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
 
 ## make directory structure
 
-## base directory that will be from arguments
-base_directory = test_output_dir
-## define directory structure. add option to change main directory name or add suffix
-
-## specify output directories as variables
-main_t2vv_dir = "T2VesselView"
-eroded_nifti_dir = "T2VesselView/Eroded_nifti"
-eroded_nifti_t1_dir = "T2VesselView/Eroded_nifti/T1"
-eroded_nifti_t2_dir = "T2VesselView/Eroded_nifti/T2"
-eroded_nifti_flair_dir = "T2VesselView/Eroded_nifti/FLAIR"
-powerpoints_dir = "T2VesselView/PowerPoints"
-processing_dir = "T2VesselView/Processing"
-processing_figures_dir = "T2VesselView/Processing/Figures_for_QA"
-processing_log_dir = "T2VesselView/Processing/Log_files"
-processing_mask_dir = "T2VesselView/Processing/Masks"
-processed_t1_dir = "T2VesselView/Processing/Preprocessed_T1"
-processed_t2_dir = "T2VesselView/Processing/Preprocessed_T2"
-processed_flair_dir = "T2VesselView/Processing/Preprocessed_FLAIR"
-renders_dir = "T2VesselView/3D_renders_png"
-renders_t1_dir = "T2VesselView/3D_renders_png/T1_3D_renders"
-renders_t1_erode_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level"
-renders_t1_angle_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_angle"
-renders_t2_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders"
-renders_t2_erode_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level"
-renders_t2_angle_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle"
-
-## specify directories to be made
-directory_structure = [
-    main_t2vv_dir,
-    eroded_nifti_dir,
-    eroded_nifti_t1_dir,
-    eroded_nifti_t2_dir,
-    eroded_nifti_flair_dir,
-    powerpoints_dir,
-    processing_dir,
-    processing_figures_dir,
-    processing_log_dir,
-    processing_mask_dir,
-    processed_t1_dir,
-    processed_t2_dir,
-    processed_flair_dir,
-    renders_dir,
-    renders_t1_dir,
-    renders_t1_erode_dir,
-    renders_t1_angle_dir,
-    renders_t2_dir,
-    renders_t2_erode_dir,
-    renders_t2_angle_dir
-]
-
-## create directories
-for directory in directory_structure:
-    directory_path = os.path.join(base_directory, directory)
-    os.makedirs(directory_path, exist_ok = True)
+# ## base directory that will be from arguments
+# base_directory = test_output_dir
+# ## define directory structure. add option to change main directory name or add suffix
+# 
+# ## specify output directories as variables
+# main_t2vv_dir = "T2VesselView"
+# eroded_nifti_dir = "T2VesselView/Eroded_nifti"
+# eroded_nifti_t1_dir = "T2VesselView/Eroded_nifti/T1"
+# eroded_nifti_t2_dir = "T2VesselView/Eroded_nifti/T2"
+# eroded_nifti_flair_dir = "T2VesselView/Eroded_nifti/FLAIR"
+# powerpoints_dir = "T2VesselView/PowerPoints"
+# processing_dir = "T2VesselView/Processing"
+# processing_figures_dir = "T2VesselView/Processing/Figures_for_QA"
+# processing_log_dir = "T2VesselView/Processing/Log_files"
+# processing_mask_dir = "T2VesselView/Processing/Masks"
+# processed_t1_dir = "T2VesselView/Processing/Preprocessed_T1"
+# processed_t2_dir = "T2VesselView/Processing/Preprocessed_T2"
+# processed_flair_dir = "T2VesselView/Processing/Preprocessed_FLAIR"
+# renders_dir = "T2VesselView/3D_renders_png"
+# renders_t1_dir = "T2VesselView/3D_renders_png/T1_3D_renders"
+# renders_t1_erode_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level"
+# renders_t1_angle_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_angle"
+# renders_t2_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders"
+# renders_t2_erode_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level"
+# renders_t2_angle_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle"
+# 
+# ## specify directories to be made
+# directory_structure = [
+#     main_t2vv_dir,
+#     eroded_nifti_dir,
+#     eroded_nifti_t1_dir,
+#     eroded_nifti_t2_dir,
+#     eroded_nifti_flair_dir,
+#     powerpoints_dir,
+#     processing_dir,
+#     processing_figures_dir,
+#     processing_log_dir,
+#     processing_mask_dir,
+#     processed_t1_dir,
+#     processed_t2_dir,
+#     processed_flair_dir,
+#     renders_dir,
+#     renders_t1_dir,
+#     renders_t1_erode_dir,
+#     renders_t1_angle_dir,
+#     renders_t2_dir,
+#     renders_t2_erode_dir,
+#     renders_t2_angle_dir
+# ]
+# 
+# ## create directories
+# for directory in directory_structure:
+#     directory_path = os.path.join(base_directory, directory)
+#     os.makedirs(directory_path, exist_ok = True)
     
 ## verify directory structure
 #for root, dirs, files in os.walk(base_directory):
