@@ -14,15 +14,15 @@ import ants
 ## import hull function from other script
 #from t2vesselviewcode.make_mask_convex_hull import make_hull_mask
 
-
+## test imports
 #import nipype.interfaces.utility as util
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
+## import modules within current package            
+
 ## below import had some issues, see
 #https://stackoverflow.com/questions/43728431/relative-imports-modulenotfounderror-no-module-named-x
-
-## import modules within current package
 
 #THIS WORKED previously before renaming from 't2vesselview'. ! BUT WHY. Perhaps issues with two packages called same thing? see .txt file with top level defined as 't2vesselview'
 ## now gives error, "no module namesd t2_vessel_viewcode" - this was from init file typo which didn't match with dir name here
