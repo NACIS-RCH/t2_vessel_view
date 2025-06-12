@@ -1,5 +1,3 @@
-
-
 import os
 
 ## make directory structure

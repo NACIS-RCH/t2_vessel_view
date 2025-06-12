@@ -19,7 +19,7 @@ import ants
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
-## import modules within current package            
+## import modules within current package        
 
 ## below import had some issues, see
 #https://stackoverflow.com/questions/43728431/relative-imports-modulenotfounderror-no-module-named-x
@@ -454,7 +454,7 @@ def mask_erosions(processed_signed_distance):
     
     
     """
-    erode_depths_list = [0.5, 1, 1.5, 2, 3]
+    erode_depths_list = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 10, 20]
     ## make list of eroded mask file names?
     eroded_masks_dict = {}
     zero_padded_erode_depths_list = []
