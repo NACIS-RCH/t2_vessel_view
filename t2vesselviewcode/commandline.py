@@ -1,4 +1,3 @@
-
 import argparse
 
 parser = argparse.ArgumentParser(description='A tool for generating Vessel Maps using T2-weighted MRI', 
@@ -24,7 +23,7 @@ parser.add_argument('-i',
             type=str, 
             action='store', 
             help='Required T1 or similar main image that other images will be registered to.',
-            required=True
+            required=True,
             dest='t1')
 
 parser.add_argument('-f', 
@@ -32,7 +31,7 @@ parser.add_argument('-f',
             type=str, 
             action='store', 
             help='3D FLAIR or similar bright 3D image such as Mag',
-            required=True
+            required=True,
             dest='flair')
 
 parser.add_argument('-c', 
