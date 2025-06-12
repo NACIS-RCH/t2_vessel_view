@@ -9,8 +9,8 @@ import argparse
 import SimpleITK as sitk
 
 
-test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
-test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
+test_data_dir = 'tests/test_data'
+test_output_dir = 'tests/test_data/test_outputs'
 mask_path = os.path.join(test_data_dir, "bet_n4_rFLAIR_0.5_mask.nii.gz")
 ### This script intakes a brain mask, and generates a convex hull (3d shape connecting all the outermost points on the mask, like wrapping a present). It does this by splitting the mask into 2d slices and performing hull calculations on all the non-zero voxels (which are turned into individual point coordinates) on each slice, and then joining all the 2d hulls to make a 3d one. This script was made for the purpose of modifying brain masks that don't capture the sagittal sinus. This will usually be masks generated from a 3D FLAIR. This is for the purpose of displaying 3d images where the sagittal sinus is relevant to surgical planning; i.e., where pathology or surgical view is near the midline of the brain. The output hull masks do not work as well for lateral structures, the original FLAIR based mask will probably be more appropriate in this case. There is also a 'hop hull' version generated, which removes sections of the hull mask that include eye and neck tissue. However, this will also remove the most posterior/inferior part of the sagittal sinus, so is not useful for occipital views.  
 
