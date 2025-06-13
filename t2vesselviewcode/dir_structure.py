@@ -4,7 +4,7 @@ import os
 
 
 ## use temporary dir for development
-test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
+test_output_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv'
 
 ## base directory that will be from arguments
 base_directory = test_output_dir
@@ -56,14 +56,17 @@ directory_structure = [
     renders_t2_angle_dir
 ]
 
+def create_directories():
+    """Create the directory structure."""
+    for directory in directory_structure:
+        os.makedirs(directory, exist_ok=True)
 
-## create directories
-for directory in directory_structure:
-    os.makedirs(directory, exist_ok = True)
-    
-## verify directory structure
-#for root, dirs, files in os.walk(base_directory):
-#    for dir in dirs:
-#        print(os.path.join(root, dir))
+# Only create directories if this module is being run directly
+if __name__ == "__main__":
+    create_directories()
+    # Verify directory structure
+    #for root, dirs, files in os.walk(base_directory):
+    #    for dir in dirs:
+    #        print(os.path.join(root, dir))
 
 
