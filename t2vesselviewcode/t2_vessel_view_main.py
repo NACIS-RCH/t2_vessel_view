@@ -16,32 +16,13 @@ from . import logger
 from . import input_validation
 
 ## import hull function from other script
-#from t2vesselviewcode.make_mask_convex_hull import make_hull_mask
+from .make_mask_convex_hull import make_hull_mask
 
 ## test imports
 #import nipype.interfaces.utility as util
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
-## import modules within current package        
-
-## below import had some issues, see
-#https://stackoverflow.com/questions/43728431/relative-imports-modulenotfounderror-no-module-named-x
-
-#THIS WORKED previously before renaming from 't2vesselview'. ! BUT WHY. Perhaps issues with two packages called same thing? see .txt file with top level defined as 't2vesselview'
-## now gives error, "no module namesd t2_vessel_viewcode" - this was from init file typo which didn't match with dir name here
-## i had reinstalled the package using 't2vesselviewcode' as the top directory and this seems to work
-## cannot uncomment the __init__ file at this level because it runs this whole script on the hard coded files included
-## this works now but will have to reinstall on upper directory later
-
-#from t2vesselviewcode import dir_structure
-#from . import dir_structure
-
-# This still does not work. it gives error saying, "attempted relative import with no known parent package"
-## something to do with pythonpath??
-#from . import dir_structure
-
-#print(os.environ["PYTHONPATH"])
 
 viewer = sitk.ImageViewer()
 viewer.SetFileExtension('.nii.gz')
@@ -50,8 +31,8 @@ viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 
 
 ## 
-test_data_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487'
-test_output_dir = '/data/projects/NACIS/PATIENTS/DataManagement/Scripts/NACIS-RCH_github/test_dataset/487/test_outputs'
+test_data_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_dataset'
+test_output_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_outputs'
 #rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
 input_t1_path = os.path.join(test_data_dir, "T1_raw.nii.gz")
 input_flair_path = os.path.join(test_data_dir, "FLAIR.nii.gz")
@@ -379,31 +360,38 @@ def generate_mask(image_for_mask):
     
     ## perform hull operations on mask
     ## **check this imported function works
-    # hires_hull_mask = make_hull_mask(hires_mask_float)[1]
+    hires_hull_mask = make_hull_mask(hires_mask_float)[1]
     hires_mask_path = os.path.join(test_output_dir, "test_bet_hires_mask.nii.gz")
     sitk.WriteImage(hires_mask_float, hires_mask_path)
 
     
     return hires_mask_path
 
-def main_mask_operations(resampled_mask): 
+def main_mask_operations(resampled_mask, use_hull_mask=False): 
     """
-    Processes mask so that it can be eroded smoothly.
+    Performs main mask operations including optional hull mask creation.
     
     Parameters
     ----------
-    
-    resampled_mask : string
-        Binary mask in the space of the main image.
+    resampled_mask : SimpleITK image object
+        The resampled mask to process
+    use_hull_mask : bool, optional
+        Whether to use the convex hull mask to include sagittal sinus
         
     Returns
     -------
     SimpleITK image object
-        Postprocessed signed distance transform image.
-    
+        Processed mask ready for erosion
     """
+    # Create hull mask if requested
+    if use_hull_mask:
+        top_hull, final_hull = make_hull_mask(resampled_mask)
+        mask_to_process = final_hull
+    else:
+        mask_to_process = resampled_mask
+    
     ## check this line
-    rxs_mask = sitk.ReadImage(resampled_mask)
+    rxs_mask = sitk.ReadImage(mask_to_process)
     ## smooth mask with gaussian kernel size 3
     smoothed_rxs_mask = sitk.DiscreteGaussian(rxs_mask, 3.0)
     write_debug_image(smoothed_rxs_mask,"smoothed_rxs_mask.nii.gz")
@@ -558,7 +546,7 @@ postprocessed_t2_cor_image = postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 mask_to_input = generate_mask(preprocessed_flair)
 
 ## process mask
-sdt_all_plus_2 = main_mask_operations(mask_to_input)
+sdt_all_plus_2 = main_mask_operations(mask_to_input, args.use_hull_mask)
 
 ## erode mask
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
