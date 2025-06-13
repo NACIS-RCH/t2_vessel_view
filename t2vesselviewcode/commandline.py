@@ -76,6 +76,11 @@ parser.add_argument('-n',
             help='Structural image that the user-provided mask was based on - i.e., has the same image dimensions as the mask. Needed for registration of mask to other images.',
             dest='user_mask_structural')
 
+parser.add_argument('--use-hull-mask',
+            action='store_true',
+            help='Use convex hull mask to include sagittal sinus (may affect cortical surface morphology)',
+            dest='use_hull_mask')
+
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
 ## add flags for save masks or not
