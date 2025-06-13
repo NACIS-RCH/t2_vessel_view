@@ -110,6 +110,4 @@ def make_hull_mask(regular_mask):
     
     return out_top_hull_nii, test_final_hull_mask
 
-top_hull, final_hull = make_hull_mask(mask_path)
-    
 
