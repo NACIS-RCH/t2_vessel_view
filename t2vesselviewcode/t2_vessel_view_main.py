@@ -1,4 +1,3 @@
-
 import os
 import argparse
 import numpy as np
@@ -10,6 +9,11 @@ import sys
 import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
+
+# Import package modules using relative imports
+from . import dir_structure
+from . import logger
+from . import input_validation
 
 ## import hull function from other script
 #from t2vesselviewcode.make_mask_convex_hull import make_hull_mask
@@ -30,7 +34,7 @@ import ants
 ## cannot uncomment the __init__ file at this level because it runs this whole script on the hard coded files included
 ## this works now but will have to reinstall on upper directory later
 
-from t2vesselviewcode import dir_structure
+#from t2vesselviewcode import dir_structure
 #from . import dir_structure
 
 # This still does not work. it gives error saying, "attempted relative import with no known parent package"
@@ -496,24 +500,8 @@ def mask_erosions(processed_signed_distance):
 
 def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outputs):
     """
-    Multiplies processed images by processed masks to generate eroded nifti images
-
-    Parameters
-    ----------
-
-    image_to_erode : simple itk image object
-        preprocessed main image sitk object
-        
-    filetype_string : string
-        String descriptor of image modality, e.g., "T1", "T2_sag".
-
-    Returns
-    -------
-    ?String
-        ? path
-
+    Multiply masks by images.
     """
-
     ## Output directory from directory structure, within 'Eroded_nifti' dir
     eroded_outdir = os.path.join(test_output_dir, directory_for_outputs)
     
@@ -569,8 +557,6 @@ postprocessed_t2_cor_image = postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 ## generate mask
 mask_to_input = generate_mask(preprocessed_flair)
 
-#for image_type, image_type_path in images_to_register.items():
-
 ## process mask
 sdt_all_plus_2 = main_mask_operations(mask_to_input)
 
@@ -578,7 +564,9 @@ sdt_all_plus_2 = main_mask_operations(mask_to_input)
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
 
 ## erode nifti
-res_t1 = multiply_masks_by_images(preprocessed_main_image, "t1", eroded_nifti_t1_dir)
-res_t2_sag = multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", eroded_nifti_t2_dir)
-## other t2s? in same or separate dirs?
+res_t1 = multiply_masks_by_images(preprocessed_main_image, "t1", dir_structure.eroded_nifti_t1_dir)
+res_t2_sag = multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", dir_structure.eroded_nifti_t2_dir)
+res_t2_cor = multiply_masks_by_images(postprocessed_t2_cor_image, "t2_cor", dir_structure.eroded_nifti_t2_dir)
+res_t2_tra = multiply_masks_by_images(postprocessed_t2_tra_image, "t2_tra", dir_structure.eroded_nifti_t2_dir)
+res_flair = multiply_masks_by_images(preprocessed_flair, "flair", dir_structure.eroded_nifti_flair_dir)
 
