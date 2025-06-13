@@ -129,7 +129,6 @@ def validate_input_files(
     1. If the required T1 image exists
     2. If any optional images (T2, FLAIR) exist
     3. If all images are in a valid format
-    4. Creates the necessary output directories
     
     Args:
         t1_path: Path to T1 image (required)
@@ -167,59 +166,8 @@ def validate_input_files(
                 except ValueError as e:
                     errors.append(str(e))
     
-    # Create the output directory structure
-    try:
-        create_output_directories(output_dir)
-    except Exception as e:
-        errors.append(f"Failed to create output directories: {str(e)}")
-    
     # Return True if no errors were found, False otherwise
     return len(errors) == 0, errors
-
-def create_output_directories(base_dir: str) -> None:
-    """
-    Create the standardized output directory structure.
-    
-    This function creates all the necessary folders for organizing the pipeline outputs.
-    The structure is designed to keep different types of outputs (images, logs, etc.)
-    in separate, clearly labeled folders.
-    
-    Args:
-        base_dir: Base directory where all output folders will be created
-    """
-    # List of all directories to create
-    # Each path is relative to the base directory
-    dirs = [
-        "T2VesselView",
-        "T2VesselView/Eroded_nifti",
-        "T2VesselView/Eroded_nifti/T1",
-        "T2VesselView/Eroded_nifti/T2",
-        "T2VesselView/Eroded_nifti/FLAIR",
-        "T2VesselView/PowerPoints",
-        "T2VesselView/Processing",
-        "T2VesselView/Processing/Figures_for_QA",
-        "T2VesselView/Processing/Log_files",
-        "T2VesselView/Processing/Masks",
-        "T2VesselView/Processing/Preprocessed_T1",
-        "T2VesselView/Processing/Preprocessed_T2",
-        "T2VesselView/Processing/Preprocessed_FLAIR",
-        "T2VesselView/3D_renders_png",
-        "T2VesselView/3D_renders_png/T1_3D_renders",
-        "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level",
-        "T2VesselView/3D_renders_png/T1_3D_renders/by_angle",
-        "T2VesselView/3D_renders_png/T2_vessel_3D_renders",
-        "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level",
-        "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle"
-    ]
-    
-    # Create each directory
-    for dir_path in dirs:
-        # Combine base directory with the relative path
-        full_path = os.path.join(base_dir, dir_path)
-        # Create the directory (and any parent directories if they don't exist)
-        os.makedirs(full_path, exist_ok=True)
-        # Log that the directory was created
-        logger.info(f"Created directory: {full_path}")
 
 def convert_dicom_to_nifti(dicom_path: str, output_path: str) -> str:
     """
