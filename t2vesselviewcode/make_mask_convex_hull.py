@@ -8,53 +8,11 @@ from scipy.spatial import Delaunay
 import argparse
 import SimpleITK as sitk
 
-
 test_data_dir = 'tests/test_data'
 test_output_dir = 'tests/test_data/test_outputs'
 mask_path = os.path.join(test_data_dir, "bet_n4_rFLAIR_0.5_mask.nii.gz")
 ### This script intakes a brain mask, and generates a convex hull (3d shape connecting all the outermost points on the mask, like wrapping a present). It does this by splitting the mask into 2d slices and performing hull calculations on all the non-zero voxels (which are turned into individual point coordinates) on each slice, and then joining all the 2d hulls to make a 3d one. This script was made for the purpose of modifying brain masks that don't capture the sagittal sinus. This will usually be masks generated from a 3D FLAIR. This is for the purpose of displaying 3d images where the sagittal sinus is relevant to surgical planning; i.e., where pathology or surgical view is near the midline of the brain. The output hull masks do not work as well for lateral structures, the original FLAIR based mask will probably be more appropriate in this case. There is also a 'hop hull' version generated, which removes sections of the hull mask that include eye and neck tissue. However, this will also remove the most posterior/inferior part of the sagittal sinus, so is not useful for occipital views.  
 
-
-## function definitions ------------------------
-
-# def initialize_parser():
-#      parser = argparse.ArgumentParser(description='Generates convex hull image (3d shape connecting all the outermost points on the mask, like wrapping a present) based on a brain mask.', epilog='Version 1, Bonnie Alexander ')
-# 
-#      parser.add_argument('-d', action='store', help='The absolute path to the common patient directory where the brain mask or masks are. This could be patient ID directory, or an erosion directory. For example, "/data/projects/NACIS/Converted_Data_Nifti/999_999999/PATIENT_NAME/Processing". Starts with a slash. ', required=True, dest='mask_directory')
-# 
-#      parser.add_argument('-m', '--list', nargs='+', metavar='input mask', required=True, type=str, action='store', help='File names of one or more brain masks in nifti format, from which to generate hulls', dest='input_masks')
-# 
-#      parser.add_argument('-p', metavar='output prefix', type=str, action='store', help='Optional. String prefix for hull masks', dest='output_prefix')
-# 
-#      parser.add_argument('-o', type=str, action='store', help='Optional. A new directory inside the patient directory will be made. Specify path from patient base directory. If it doesn\'t exist, it will be created.', dest='output_directory')
-# 
-#      return parser
-
-
-# This function is from here: https://stackoverflow.com/questions/46310603/how-to-compute-convex-hull-image-volume-in-3d-numpy-arrays
-# 
-# def flood_fill_hull(image):
-#     ## 'where' gets all the voxels that are nonzero in the image
-#     points = np.transpose(np.where(image))
-#     hull = ConvexHull(points)
-#     deln = Delaunay(points[hull.vertices])
-#     idx = np.stack(np.indices(image.shape), axis = -1)
-#     out_idx = np.nonzero(deln.find_simplex(idx) + 1)
-#     out_img = np.zeros(image.shape)
-#     out_img[out_idx] = 1
-#     return out_img, hull
-
-
-
-### ---------------------------------------------------------------------------------------------
-## 
-
-####----uncomment this section for use
-# parser = initialize_parser()
-# args = parser.parse_args()
-# mask_dir=args.mask_directory
-# mask_list=args.input_masks
-####-------
 
 def make_hull_mask(regular_mask):
 
