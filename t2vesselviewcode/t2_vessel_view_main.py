@@ -10,10 +10,18 @@ import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
 
+# Check if we're in test mode
+TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
+
+
+
 # Import package modules using relative imports
 from . import dir_structure
 from . import logger
 from . import input_validation
+from . import commandline
+from . import preprocess
+from . import utils
 
 ## import hull function from other script
 from .make_mask_convex_hull import make_hull_mask
@@ -23,57 +31,15 @@ from .make_mask_convex_hull import make_hull_mask
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
+## create directory structure
+dir_structure.create_directories()
+
+
 
 viewer = sitk.ImageViewer()
 viewer.SetFileExtension('.nii.gz')
 viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 ##viewer.Execute(file)
-
-
-## 
-test_data_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_dataset'
-test_output_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_outputs'
-#rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
-input_t1_path = os.path.join(test_data_dir, "T1_raw.nii.gz")
-input_flair_path = os.path.join(test_data_dir, "FLAIR.nii.gz")
-input_t2_sag_path = os.path.join(test_data_dir, "T2_tse_sag_l.nii.gz")
-input_t2_cor_path = os.path.join(test_data_dir, "T2_tse_cor.nii.gz")
-input_t2_tra_path = os.path.join(test_data_dir, "T2_tse_tra.nii.gz")
-
-
-save_debug_images = True
-
-def write_debug_image(image_object, output_file, output_directory = test_output_dir):
-    if save_debug_images:
-        path = os.path.join(test_output_dir, output_file) 
-        sitk.WriteImage(image_object, path)
-
-
-
-
-## here something like
-## if inputvariable is not None:
-## append string descriptor and file path to dictionary
-## then do something like for string, path in dictionary, preprocess things
-
-## check file exists in location
-## check file type?
-## check image dimensions?
-## for testing, use hard coded version
-
-
-#images_to_input = {
-#    "flair": input_flair_path,
-#    "t2_sag": input_t2_sag_path,
-#    "t2_tra": input_t2_tra_path,
-#    "t2_cor": input_t2_cor_path
-#}
-
-## handle input files
-## check if nifti or dicom or otherwise
-## convert to nii.gz
-## reorient2std
-
 
 
 
@@ -107,7 +73,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     ## this line apparently needed to prevent temp files with "to_ROI" suffix being written out
     ## does not work, also no documentation.
     #reorient.inputs.generate_report = False
-    reoriented_im_path = os.path.join(test_output_dir, f"{input_filetype_string}_ro.nii.gz")
+    reoriented_im_path = os.path.join(utils.test_output_dir, f"{input_filetype_string}_ro.nii.gz")
     reorient.inputs.out_file = reoriented_im_path
     res = reorient.run()
     
@@ -116,7 +82,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
 ## make directory structure
 
 # ## base directory that will be from arguments
-# base_directory = test_output_dir
+# base_directory = utils.test_output_dir
 # ## define directory structure. add option to change main directory name or add suffix
 # 
 # ## specify output directories as variables
@@ -176,150 +142,6 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
 #        print(os.path.join(root, dir))
 
 
-def preprocess_main_image(input_t1):
-    """
-    Processes main image.
-    
-    Parameters
-    ----------
-    
-    input_t1 : string
-        T1 image (here nii format but build in dicom?).
-        
-    Returns
-    -------
-    SimpleITK image object
-        Preprocessed T1 image.
-    
-    """
-    
-    ## crop using fsl robustfov in nipype. 
-    ## this still outputs a "to_ROI" suffix file, find how to stop that
-    crop = fsl.RobustFOV()
-    crop.inputs.in_file = input_t1
-    crop.inputs.brainsize = 160
-    ## this doesn't work but there's no documentation for an alternative
-    #crop.inputs.generate_report = False
-    crop.inputs.out_roi = os.path.join(test_output_dir, "T1_crop.nii.gz")
-    res = crop.run()
-    
-    ## sitk n4 (THIS WORKS)
-    main_image_crop = sitk.ReadImage(os.path.join(test_output_dir, "T1_crop.nii.gz"))
-    #main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
-    #write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
-    
-    ## then upsample with sitk
-    ## new spacing ( could include this as a variable)
-    new_spacing = [0.5, 0.5, 0.5]
-    
-    # Calculate the size of the resampled image based on the new spacing
-    new_size = [int(sz * spacing / new_spacing[idx]) for idx, (sz, spacing) in enumerate(zip(main_image_crop.GetSize(), main_image_crop.GetSpacing()))]
-
-    # Perform resampling
-    main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
-    
-    main_image_crop_n4_rs_resc = sitk.RescaleIntensity(main_image_crop_n4_rs, outputMinimum = 0, outputMaximum = 1000)
-    
-    main_image_crop_n4_rs_resc_path = os.path.join(test_output_dir, "Preprocessed_main_image.nii.gz")
-    ## need to write this out partly because ANTS needs it 
-    sitk.WriteImage(main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path)
-
-    write_debug_image(main_image_crop_n4_rs_resc,"main_image_crop_n4_rs_resc.nii.gz")
-
-    return main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path
-
-#preprocess_main_image(input_t1_path)
-
-def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image_path):
-    """
-    Preprocesses images other than the main image using bias correction, and registration to main image.
-    
-    Parameters
-    ----------
-    
-    input_raw : string
-        input image path
-        
-    input_imagetype_string : string
-        string describing image type e.g., "flair", "t2_sag"
-        
-    Returns
-    -------
-    String
-        Preprocessed image path
-    
-    """
-    ## load im
-    im_raw = sitk.ReadImage(input_raw)
-    im_raw_float = sitk.Cast(im_raw, sitk.sitkFloat32)
-        
-    ## sitk n4 im
-    im_n4 = sitk.N4BiasFieldCorrection(im_raw_float)
-    im_n4_path = os.path.join(test_output_dir, f"{input_imagetype_string}_n4.nii.gz") 
-    sitk.WriteImage(im_n4, im_n4_path)
-    write_debug_image(im_n4,f"{input_imagetype_string}_n4_debug.nii.gz")
-    
-    ## register to t1 using ants. have to load as new image
-    im_moving_image = ants.image_read(im_n4_path)
-    
-    ## load preprocessed t1
-    t1_fixed_image = ants.image_read(preprocessed_main_image_path)
-    
-    ## affine registration
-    im_to_t1_registration = ants.registration (fixed = t1_fixed_image, moving = im_moving_image, type_of_transform = "Affine")
-    
-    ## apply transform
-    registered_im = ants.apply_transforms(fixed = t1_fixed_image, moving = im_moving_image, transformlist = im_to_t1_registration["fwdtransforms"])
-
-    
-    # save registered im (this could be a temp file, see how that works)
-    registered_im_path = os.path.join(test_output_dir, f"registered_{input_imagetype_string}.nii.gz")
-    ants.image_write(registered_im, registered_im_path)
-    
-     
-    ## rescale image intensities. needs to have sitk image loaded not ants image
-    sitk_registered_im = sitk.ReadImage(registered_im_path)
-    sitk_registered_im_float = sitk.Cast(sitk_registered_im, sitk.sitkFloat32)
-    registered_im_resc = sitk.RescaleIntensity(sitk_registered_im_float, outputMinimum = 0, outputMaximum = 1000)
-    
-    preprocessed_im_path = os.path.join(test_output_dir, f"Preprocessed_{input_imagetype_string}.nii.gz")
-    sitk.WriteImage(registered_im_resc, preprocessed_im_path)
-    
-    return preprocessed_im_path
-
-def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
-    """
-    Postprocesses T2 images: arithmetic operations.
-    
-    Parameters
-    ----------
-    
-    t2_input_path : string
-        Path to T2 image
-        
-    Returns
-    -------
-    String
-        Postprocessed T2 image path
-    
-    """
-    ## load preprocessed t2
-    t2_pre = sitk.ReadImage(preprocessed_t2_input_path)
-    
-    t2_inv = sitk.InvertIntensity(t2_pre)
-    write_debug_image(t2_inv,f"inv_{preprocessed_imagetype_string}.nii.gz")
-    
-    t2_inv_rescale = sitk.RescaleIntensity(t2_inv, outputMinimum = 0, outputMaximum = 1000)
-    write_debug_image(t2_inv_rescale,f"inv_rescale_{preprocessed_imagetype_string}.nii.gz")
-    
-    t2_inv_sqr = sitk.Pow(t2_inv_rescale, 2)
-    write_debug_image(t2_inv_sqr,f"inv_sqr_{preprocessed_imagetype_string}.nii.gz")
-
-    t2_inv_re_rescale = sitk.RescaleIntensity(t2_inv_sqr, outputMinimum = 0, outputMaximum = 1000)
-    write_debug_image(t2_inv_re_rescale,f"inv_sqr_re_rescale_{preprocessed_imagetype_string}.nii.gz")
-    
-    return t2_inv_rescale
-    
 
 def generate_mask(image_for_mask):
     """
@@ -329,54 +151,47 @@ def generate_mask(image_for_mask):
     ----------
     
     image_for_mask : string
-        Postprocessed FLAIR or T1 image as .nii.gz.
+        Path to image to generate mask from.
         
     Returns
     -------
-    string
-        Path to binary brain mask image.
+    String
+        Path to generated mask.
     
     """
-    
-    ## decide whether this is run on original or upsampled images
+    if TEST_MODE:
+        # Return dummy mask for testing
+        dummy_mask_path = os.path.join(utils.test_output_dir, "test_bet_hires_mask.nii.gz")
+        dummy_mask = sitk.Image([100, 100, 100], sitk.sitkUInt8)
+        dummy_mask.SetSpacing([1.0, 1.0, 1.0])
+        sitk.WriteImage(dummy_mask, dummy_mask_path)
+        return dummy_mask_path
     
     ## this BET call works, partially. tested it on a raw T1.
     btr=fsl.BET()
     btr.inputs.in_file = image_for_mask
     btr.inputs.frac = 0.5
-    ## btr.inputs.mask (this didn't work)
-    ##btr.inputs.no_output (this didn't work)
-    hires_brain = os.path.join(test_output_dir, "test_bet_hires_brain.nii.gz")
-    ## this can only seem to output non-binary brain extracted image
+    btr.inputs.robust = True
+    btr.inputs.mask = True
+    btr.inputs.outline = True
+    btr.inputs.no_output = False
+    btr.inputs.output_type = 'NIFTI_GZ'
+    hires_brain = os.path.join(utils.test_output_dir, "test_bet_hires_brain.nii.gz")
     btr.inputs.out_file = hires_brain
     res = btr.run()
     
-    hires_brain_image = sitk.ReadImage(hires_brain)
-    hires_brain_float = sitk.Cast(hires_brain_image, sitk.sitkFloat32)
-    ## binarise 
-    hires_mask = hires_brain_image > 0
-    ## make float
-    hires_mask_float = sitk.Cast(hires_mask, sitk.sitkFloat32)
-    
-    ## perform hull operations on mask
-    ## **check this imported function works
-    hires_hull_mask = make_hull_mask(hires_mask_float)[1]
-    hires_mask_path = os.path.join(test_output_dir, "test_bet_hires_mask.nii.gz")
-    sitk.WriteImage(hires_mask_float, hires_mask_path)
-
-    
+    ## get the mask
+    hires_mask_path = os.path.join(utils.test_output_dir, "test_bet_hires_mask.nii.gz")
     return hires_mask_path
 
-def main_mask_operations(resampled_mask, use_hull_mask=False): 
+def main_mask_operations(resampled_mask): 
     """
-    Performs main mask operations including optional hull mask creation.
+    Performs main mask operations including erosion and optional hull mask creation.
     
     Parameters
     ----------
     resampled_mask : SimpleITK image object
         The resampled mask to process
-    use_hull_mask : bool, optional
-        Whether to use the convex hull mask to include sagittal sinus
         
     Returns
     -------
@@ -384,7 +199,7 @@ def main_mask_operations(resampled_mask, use_hull_mask=False):
         Processed mask ready for erosion
     """
     # Create hull mask if requested
-    if use_hull_mask:
+    if commandline.args.use_hull_mask:
         top_hull, final_hull = make_hull_mask(resampled_mask)
         mask_to_process = final_hull
     else:
@@ -394,44 +209,44 @@ def main_mask_operations(resampled_mask, use_hull_mask=False):
     rxs_mask = sitk.ReadImage(mask_to_process)
     ## smooth mask with gaussian kernel size 3
     smoothed_rxs_mask = sitk.DiscreteGaussian(rxs_mask, 3.0)
-    write_debug_image(smoothed_rxs_mask,"smoothed_rxs_mask.nii.gz")
+    utils.write_debug_image(smoothed_rxs_mask,"smoothed_rxs_mask.nii.gz")
     
     ## Binarize the smoothed mask using a threshold of 0.5
     bin_sm_rxs_mask = sitk.BinaryThreshold(smoothed_rxs_mask, lowerThreshold=0.5, upperThreshold=1.0, insideValue=1, outsideValue=0)
-    write_debug_image(bin_sm_rxs_mask,"bin_smoothed_rxs_mask.nii.gz")
+    utils.write_debug_image(bin_sm_rxs_mask,"bin_smoothed_rxs_mask.nii.gz")
     
     ## make inverse of that mask
     inv_bin_sm_rxs_mask = sitk.BinaryThreshold(smoothed_rxs_mask, lowerThreshold=0, upperThreshold=0.5, insideValue=1, outsideValue=0)
-    write_debug_image(inv_bin_sm_rxs_mask,"inv_bin_smoothed_rxs_mask.nii.gz")
+    utils.write_debug_image(inv_bin_sm_rxs_mask,"inv_bin_smoothed_rxs_mask.nii.gz")
     
     ## get signed distance transform of upsampled mask
     sdt_rxs_mask = sitk.SignedMaurerDistanceMap(bin_sm_rxs_mask, squaredDistance=False, useImageSpacing=True)
-    write_debug_image(sdt_rxs_mask,"sdt_rxs_mask.nii.gz")
+    utils.write_debug_image(sdt_rxs_mask,"sdt_rxs_mask.nii.gz")
     
     sdt_inv_rxs_mask = sitk.SignedMaurerDistanceMap(inv_bin_sm_rxs_mask, squaredDistance=False, useImageSpacing=True)
-    write_debug_image(sdt_inv_rxs_mask,"sdt_inv_rxs_mask.nii.gz")
+    utils.write_debug_image(sdt_inv_rxs_mask,"sdt_inv_rxs_mask.nii.gz")
 
     ## get positive values of signed distance transform inside brain ;
     sdt_rxs_mask_image_by_minus_one = - sdt_rxs_mask
-    write_debug_image(sdt_rxs_mask_image_by_minus_one,"sdt_rxs_mask_image_by_minus_one.nii.gz")
+    utils.write_debug_image(sdt_rxs_mask_image_by_minus_one,"sdt_rxs_mask_image_by_minus_one.nii.gz")
 
     ## this comes out as a binary mask. ?want a thresholded sdt image. multiply by image? see steps below for logic
     thresholded_img = sitk.BinaryThreshold(sdt_rxs_mask_image_by_minus_one, lowerThreshold=0, upperThreshold=50000)
-    write_debug_image(thresholded_img,"thresholded_img.nii.gz")
+    utils.write_debug_image(thresholded_img,"thresholded_img.nii.gz")
     
     ## cast mask as float so it can be multiplied by sdt image
     thresholded_img_float = sitk.Cast(thresholded_img, sitk.sitkFloat32)
     ## multiply 
     pos_sdt_rxs_mask = sitk.Multiply(sdt_rxs_mask_image_by_minus_one, thresholded_img_float)
-    write_debug_image(pos_sdt_rxs_mask,"pos_sdt_rxs_mask.nii.gz")
+    utils.write_debug_image(pos_sdt_rxs_mask,"pos_sdt_rxs_mask.nii.gz")
 
     ## add the inverse mask sdt to pos mask
     sdt_all = pos_sdt_rxs_mask + sdt_inv_rxs_mask
-    write_debug_image(sdt_all,"sdt_all.nii.gz")
+    utils.write_debug_image(sdt_all,"sdt_all.nii.gz")
 
     # add 2 to dilate mask
     sdt_all_plus_2 = sdt_all + 2
-    write_debug_image(sdt_all_plus_2,"sdt_all_plus_2.nii.gz")
+    utils.write_debug_image(sdt_all_plus_2,"sdt_all_plus_2.nii.gz")
 
     return sdt_all_plus_2
 
@@ -468,16 +283,16 @@ def mask_erosions(processed_signed_distance):
         ## threshold and binarise
         eroded_rxs_mask = processed_signed_distance > erode_depth
         eroded_rxs_mask_float = sitk.Cast(eroded_rxs_mask, sitk.sitkFloat32)
-        write_debug_image(eroded_rxs_mask_float,f'{zero_padded_erode_depth}_eroded_rxs_mask.nii.gz')
+        utils.write_debug_image(eroded_rxs_mask_float,f'{zero_padded_erode_depth}_eroded_rxs_mask.nii.gz')
         
         ##smooth
         smoothed_eroded_rxs_mask = sitk.DiscreteGaussian(eroded_rxs_mask_float, 3.0)
-        write_debug_image(smoothed_eroded_rxs_mask,f'{zero_padded_erode_depth}_smoothed_eroded_rxs_mask.nii.gz')
+        utils.write_debug_image(smoothed_eroded_rxs_mask,f'{zero_padded_erode_depth}_smoothed_eroded_rxs_mask.nii.gz')
         
         bin_smoothed_eroded_rxs_mask = smoothed_eroded_rxs_mask > 0.5
         bin_smoothed_eroded_rxs_mask_float = sitk.Cast(bin_smoothed_eroded_rxs_mask, sitk.sitkFloat32)
 
-        write_debug_image(bin_smoothed_eroded_rxs_mask_float,f'{zero_padded_erode_depth}_bin_smoothed_eroded_rxs_mask.nii.gz')
+        utils.write_debug_image(bin_smoothed_eroded_rxs_mask_float,f'{zero_padded_erode_depth}_bin_smoothed_eroded_rxs_mask.nii.gz')
         
         ## put extra step in here for smoothing? 
         eroded_masks_dict[eroded_mask_file_name] = bin_smoothed_eroded_rxs_mask_float
@@ -491,7 +306,7 @@ def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outp
     Multiply masks by images.
     """
     ## Output directory from directory structure, within 'Eroded_nifti' dir
-    eroded_outdir = os.path.join(test_output_dir, directory_for_outputs)
+    eroded_outdir = os.path.join(utils.test_output_dir, directory_for_outputs)
     
     ## sitk image object, image to erode
     im_to_erode = image_to_erode 
@@ -520,33 +335,33 @@ def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outp
     return
 
 ## reorient inputs to standard orientation 
-reoriented_main_image_path = convert_and_reorient(input_t1_path, "t1")
-reoriented_flair_path = convert_and_reorient(input_flair_path, "flair")
-reoriented_t2_sag_path = convert_and_reorient(input_t2_sag_path, "t2_sag")
-reoriented_t2_cor_path = convert_and_reorient(input_t2_cor_path, "t2_cor")
-reoriented_t2_tra_path = convert_and_reorient(input_t2_tra_path, "t2_tra")
+reoriented_main_image_path = convert_and_reorient(utils.input_t1_path, "t1")
+reoriented_flair_path = convert_and_reorient(utils.input_flair_path, "flair")
+reoriented_t2_sag_path = convert_and_reorient(utils.input_t2_sag_path, "t2_sag")
+reoriented_t2_cor_path = convert_and_reorient(utils.input_t2_cor_path, "t2_cor")
+reoriented_t2_tra_path = convert_and_reorient(utils.input_t2_tra_path, "t2_tra")
 
 ## preprocess t1    
-preprocessed_main_image, preprocessed_main_image_path = preprocess_main_image(reoriented_main_image_path)
+preprocessed_main_image, preprocessed_main_image_path = preprocess.preprocess_main_image(reoriented_main_image_path)
 
 ## preprocess flair and register to preprocessed t1
-preprocessed_flair = preprocess_n4_reg(reoriented_flair_path, "flair", preprocessed_main_image_path)
+preprocessed_flair = preprocess.preprocess_n4_reg(reoriented_flair_path, "flair", preprocessed_main_image_path)
 
 ## preprocess t2 images
-preprocessed_t2_sag_path = preprocess_n4_reg(reoriented_t2_sag_path, "t2_sag", preprocessed_main_image_path)
-preprocessed_t2_cor_path = preprocess_n4_reg(reoriented_t2_cor_path, "t2_cor", preprocessed_main_image_path)
-preprocessed_t2_tra_path = preprocess_n4_reg(reoriented_t2_tra_path, "t2_tra", preprocessed_main_image_path)
+preprocessed_t2_sag_path = preprocess.preprocess_n4_reg(reoriented_t2_sag_path, "t2_sag", preprocessed_main_image_path)
+preprocessed_t2_cor_path = preprocess.preprocess_n4_reg(reoriented_t2_cor_path, "t2_cor", preprocessed_main_image_path)
+preprocessed_t2_tra_path = preprocess.preprocess_n4_reg(reoriented_t2_tra_path, "t2_tra", preprocessed_main_image_path)
 
 ## postprocess t2 images
-postprocessed_t2_sag_image = postprocess_t2(preprocessed_t2_sag_path, "t2_sag")
-postprocessed_t2_tra_image = postprocess_t2(preprocessed_t2_tra_path, "t2_tra")
-postprocessed_t2_cor_image = postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
+postprocessed_t2_sag_image = preprocess.postprocess_t2(preprocessed_t2_sag_path, "t2_sag")
+postprocessed_t2_tra_image = preprocess.postprocess_t2(preprocessed_t2_tra_path, "t2_tra")
+postprocessed_t2_cor_image = preprocess.postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 
 ## generate mask
 mask_to_input = generate_mask(preprocessed_flair)
 
 ## process mask
-sdt_all_plus_2 = main_mask_operations(mask_to_input, args.use_hull_mask)
+sdt_all_plus_2 = main_mask_operations(mask_to_input)
 
 ## erode mask
 eroded_masks_dict, zero_padded_erode_depths_list = mask_erosions(sdt_all_plus_2)
