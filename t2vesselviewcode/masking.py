@@ -40,7 +40,6 @@ def generate_mask(image_for_mask):
     btr.inputs.robust = True
     btr.inputs.mask = True
     btr.inputs.outline = True
-    btr.inputs.no_output = False
     btr.inputs.output_type = 'NIFTI_GZ'
     hires_brain = os.path.join(utils.get_output_dir(), "test_bet_hires_brain.nii.gz")
     btr.inputs.out_file = hires_brain
