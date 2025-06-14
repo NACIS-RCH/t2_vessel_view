@@ -40,41 +40,9 @@ viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 
 
 
-def convert_and_reorient(raw_input_file, input_filetype_string):
-    """
-    Converts to nii.gz and reorients to standard orientation
-    
-    Parameters
-    ----------
-    
-    raw_input_file : string
-        Path to raw input file
-        
-    Returns
-    -------
-    String
-        Path to converted reoriented file
-    
-    """
-    ## use nibabel to convert to nifti if not done earlier
-    
-    
-    ## reorient
-    ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
-    ## itself sits in though. 
-    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py but only if run in rstudio
-    reorient = fsl.Reorient2Std()
-    reorient.inputs.in_file = raw_input_file
-    ## this works if the output type is specified but it also outputs a file with "to_ROI" suffix in the working directory
-    reorient.inputs.output_type = 'NIFTI_GZ'
-    ## this line apparently needed to prevent temp files with "to_ROI" suffix being written out
-    ## does not work, also no documentation.
-    #reorient.inputs.generate_report = False
-    reoriented_im_path = os.path.join(utils.test_output_dir, f"{input_filetype_string}_ro.nii.gz")
-    reorient.inputs.out_file = reoriented_im_path
-    res = reorient.run()
-    
-    return reoriented_im_path
+
+
+
 
 ## make directory structure
 
@@ -141,11 +109,11 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
 
 
 ## reorient inputs to standard orientation 
-reoriented_main_image_path = convert_and_reorient(utils.input_t1_path, "t1")
-reoriented_flair_path = convert_and_reorient(utils.input_flair_path, "flair")
-reoriented_t2_sag_path = convert_and_reorient(utils.input_t2_sag_path, "t2_sag")
-reoriented_t2_cor_path = convert_and_reorient(utils.input_t2_cor_path, "t2_cor")
-reoriented_t2_tra_path = convert_and_reorient(utils.input_t2_tra_path, "t2_tra")
+reoriented_main_image_path = preprocess.convert_and_reorient(utils.input_t1_path, "t1")
+reoriented_flair_path = preprocess.convert_and_reorient(utils.input_flair_path, "flair")
+reoriented_t2_sag_path = preprocess.convert_and_reorient(utils.input_t2_sag_path, "t2_sag")
+reoriented_t2_cor_path = preprocess.convert_and_reorient(utils.input_t2_cor_path, "t2_cor")
+reoriented_t2_tra_path = preprocess.convert_and_reorient(utils.input_t2_tra_path, "t2_tra")
 
 ## preprocess t1    
 preprocessed_main_image, preprocessed_main_image_path = preprocess.preprocess_main_image(reoriented_main_image_path)
