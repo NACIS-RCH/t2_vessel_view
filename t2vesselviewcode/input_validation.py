@@ -169,39 +169,3 @@ def validate_input_files(
     # Return True if no errors were found, False otherwise
     return len(errors) == 0, errors
 
-def convert_dicom_to_nifti(dicom_path: str, output_path: str) -> str:
-    """
-    Convert DICOM series to NIfTI format.
-    
-    Args:
-        dicom_path: Path to DICOM file or directory containing DICOM series
-        output_path: Path where the NIfTI file should be saved
-        
-    Returns:
-        str: Path to the converted NIfTI file
-        
-    Raises:
-        RuntimeError: If the conversion fails
-    """
-    try:
-        # Create a SimpleITK image series reader
-        reader = sitk.ImageSeriesReader()
-        
-        # If the input is a directory, get all DICOM files in it
-        # If it's a single file, just use that file
-        if os.path.isdir(dicom_path):
-            dicom_names = reader.GetGDCMSeriesFileNames(dicom_path)
-        else:
-            dicom_names = [dicom_path]
-        
-        # Set the file names and read the image
-        reader.SetFileNames(dicom_names)
-        image = reader.Execute()
-        
-        # Save the image as NIfTI
-        sitk.WriteImage(image, output_path)
-        logger.info(f"Converted DICOM to NIfTI: {output_path}")
-        return output_path
-    except (IOError, RuntimeError) as e:
-        # If anything goes wrong, raise an error with a message
-        raise RuntimeError(f"Failed to convert DICOM to NIfTI: {str(e)}") 

@@ -9,6 +9,71 @@ from . import utils
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
 
+
+def convert_and_reorient(raw_input_file, input_filetype_string):
+    """
+    Converts DICOM to nii.gz if needed and reorients to standard orientation
+    
+    Parameters
+    ----------
+    
+    raw_input_file : string
+        Path to raw input file (DICOM or NIfTI)
+        
+    Returns
+    -------
+    String
+        Path to converted reoriented file
+    
+    """
+    # Check if input is DICOM and convert to NIfTI if needed
+    if os.path.isdir(raw_input_file) or raw_input_file.lower().endswith('.dcm'):
+        # DICOM conversion
+        try:
+            reader = sitk.ImageSeriesReader()
+            
+            # If the input is a directory, get all DICOM files in it
+            # If it's a single file, just use that file
+            if os.path.isdir(raw_input_file):
+                dicom_names = reader.GetGDCMSeriesFileNames(raw_input_file)
+            else:
+                dicom_names = [raw_input_file]
+            
+            # Set the file names and read the image
+            reader.SetFileNames(dicom_names)
+            image = reader.Execute()
+            
+            # Save as temporary NIfTI for FSL processing
+            temp_nifti_path = os.path.join(utils.test_output_dir, f"{input_filetype_string}_temp.nii.gz")
+            sitk.WriteImage(image, temp_nifti_path)
+            
+            # Use the converted file for reorientation
+            file_for_reorient = temp_nifti_path
+            
+        except (IOError, RuntimeError) as e:
+            raise RuntimeError(f"Failed to convert DICOM to NIfTI: {str(e)}")
+    else:
+        # Already NIfTI, use as-is
+        file_for_reorient = raw_input_file
+    
+    ## reorient
+    ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
+    ## itself sits in though. 
+    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py but only if run in rstudio
+    reorient = fsl.Reorient2Std()
+    reorient.inputs.in_file = file_for_reorient
+    ## this works if the output type is specified but it also outputs a file with "to_ROI" suffix in the working directory
+    reorient.inputs.output_type = 'NIFTI_GZ'
+    ## this line apparently needed to prevent temp files with "to_ROI" suffix being written out
+    ## does not work, also no documentation.
+    #reorient.inputs.generate_report = False
+    reoriented_im_path = os.path.join(utils.test_output_dir, f"{input_filetype_string}_ro.nii.gz")
+    reorient.inputs.out_file = reoriented_im_path
+    res = reorient.run()
+    
+    return reoriented_im_path
+
+
 def preprocess_main_image(input_t1):
     """
     Processes main image.
