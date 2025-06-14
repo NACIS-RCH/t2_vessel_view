@@ -31,13 +31,13 @@ from . import masking
 ## validate input files before processing
 print("Validating input files...")
 is_valid, errors = input_validation.validate_input_files(
-    utils.input_t1_path, 
-    utils.test_output_dir,
+    commandline.args.t1, 
+    commandline.args.mri_dir,
     {
-        't2_sag': utils.input_t2_sag_path,
-        't2_cor': utils.input_t2_cor_path,
-        't2_tra': utils.input_t2_tra_path,
-        'flair': utils.input_flair_path
+        't2_sag': commandline.args.t2_sag,
+        't2_cor': commandline.args.t2_cor,
+        't2_tra': commandline.args.t2_tra,
+        'flair': commandline.args.flair
     }
 )
 
@@ -124,11 +124,11 @@ viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 
 
 ## reorient inputs to standard orientation 
-reoriented_main_image_path = preprocess.convert_and_reorient(utils.input_t1_path, "t1")
-reoriented_flair_path = preprocess.convert_and_reorient(utils.input_flair_path, "flair")
-reoriented_t2_sag_path = preprocess.convert_and_reorient(utils.input_t2_sag_path, "t2_sag")
-reoriented_t2_cor_path = preprocess.convert_and_reorient(utils.input_t2_cor_path, "t2_cor")
-reoriented_t2_tra_path = preprocess.convert_and_reorient(utils.input_t2_tra_path, "t2_tra")
+reoriented_main_image_path = preprocess.convert_and_reorient(commandline.args.t1, "t1")
+reoriented_flair_path = preprocess.convert_and_reorient(commandline.args.flair, "flair")
+reoriented_t2_sag_path = preprocess.convert_and_reorient(commandline.args.t2_sag, "t2_sag")
+reoriented_t2_cor_path = preprocess.convert_and_reorient(commandline.args.t2_cor, "t2_cor")
+reoriented_t2_tra_path = preprocess.convert_and_reorient(commandline.args.t2_tra, "t2_tra")
 
 ## preprocess t1    
 preprocessed_main_image, preprocessed_main_image_path = preprocess.preprocess_main_image(reoriented_main_image_path)

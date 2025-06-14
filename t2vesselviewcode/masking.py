@@ -27,7 +27,7 @@ def generate_mask(image_for_mask):
     """
     if TEST_MODE:
         # Return dummy mask for testing
-        dummy_mask_path = os.path.join(utils.test_output_dir, "test_bet_hires_mask.nii.gz")
+        dummy_mask_path = os.path.join(utils.get_output_dir(), "test_bet_hires_mask.nii.gz")
         dummy_mask = sitk.Image([100, 100, 100], sitk.sitkUInt8)
         dummy_mask.SetSpacing([1.0, 1.0, 1.0])
         sitk.WriteImage(dummy_mask, dummy_mask_path)
@@ -42,12 +42,12 @@ def generate_mask(image_for_mask):
     btr.inputs.outline = True
     btr.inputs.no_output = False
     btr.inputs.output_type = 'NIFTI_GZ'
-    hires_brain = os.path.join(utils.test_output_dir, "test_bet_hires_brain.nii.gz")
+    hires_brain = os.path.join(utils.get_output_dir(), "test_bet_hires_brain.nii.gz")
     btr.inputs.out_file = hires_brain
     res = btr.run()
     
     ## get the mask
-    hires_mask_path = os.path.join(utils.test_output_dir, "test_bet_hires_mask.nii.gz")
+    hires_mask_path = os.path.join(utils.get_output_dir(), "test_bet_hires_mask.nii.gz")
     return hires_mask_path
 
 def main_mask_operations(resampled_mask): 
@@ -75,44 +75,44 @@ def main_mask_operations(resampled_mask):
     rxs_mask = sitk.ReadImage(mask_to_process)
     ## smooth mask with gaussian kernel size 3
     smoothed_rxs_mask = sitk.DiscreteGaussian(rxs_mask, 3.0)
-    utils.write_debug_image(smoothed_rxs_mask,"smoothed_rxs_mask.nii.gz")
+    utils.write_debug_image(smoothed_rxs_mask, "smoothed_rxs_mask.nii.gz", utils.get_output_dir())
     
     ## Binarize the smoothed mask using a threshold of 0.5
     bin_sm_rxs_mask = sitk.BinaryThreshold(smoothed_rxs_mask, lowerThreshold=0.5, upperThreshold=1.0, insideValue=1, outsideValue=0)
-    utils.write_debug_image(bin_sm_rxs_mask,"bin_smoothed_rxs_mask.nii.gz")
+    utils.write_debug_image(bin_sm_rxs_mask, "bin_smoothed_rxs_mask.nii.gz", utils.get_output_dir())
     
     ## make inverse of that mask
     inv_bin_sm_rxs_mask = sitk.BinaryThreshold(smoothed_rxs_mask, lowerThreshold=0, upperThreshold=0.5, insideValue=1, outsideValue=0)
-    utils.write_debug_image(inv_bin_sm_rxs_mask,"inv_bin_smoothed_rxs_mask.nii.gz")
+    utils.write_debug_image(inv_bin_sm_rxs_mask, "inv_bin_smoothed_rxs_mask.nii.gz", utils.get_output_dir())
     
     ## get signed distance transform of upsampled mask
     sdt_rxs_mask = sitk.SignedMaurerDistanceMap(bin_sm_rxs_mask, squaredDistance=False, useImageSpacing=True)
-    utils.write_debug_image(sdt_rxs_mask,"sdt_rxs_mask.nii.gz")
+    utils.write_debug_image(sdt_rxs_mask, "sdt_rxs_mask.nii.gz", utils.get_output_dir())
     
     sdt_inv_rxs_mask = sitk.SignedMaurerDistanceMap(inv_bin_sm_rxs_mask, squaredDistance=False, useImageSpacing=True)
-    utils.write_debug_image(sdt_inv_rxs_mask,"sdt_inv_rxs_mask.nii.gz")
+    utils.write_debug_image(sdt_inv_rxs_mask, "sdt_inv_rxs_mask.nii.gz", utils.get_output_dir())
 
     ## get positive values of signed distance transform inside brain ;
     sdt_rxs_mask_image_by_minus_one = - sdt_rxs_mask
-    utils.write_debug_image(sdt_rxs_mask_image_by_minus_one,"sdt_rxs_mask_image_by_minus_one.nii.gz")
+    utils.write_debug_image(sdt_rxs_mask_image_by_minus_one, "sdt_rxs_mask_image_by_minus_one.nii.gz", utils.get_output_dir())
 
     ## this comes out as a binary mask. ?want a thresholded sdt image. multiply by image? see steps below for logic
     thresholded_img = sitk.BinaryThreshold(sdt_rxs_mask_image_by_minus_one, lowerThreshold=0, upperThreshold=50000)
-    utils.write_debug_image(thresholded_img,"thresholded_img.nii.gz")
+    utils.write_debug_image(thresholded_img, "thresholded_img.nii.gz", utils.get_output_dir())
     
     ## cast mask as float so it can be multiplied by sdt image
     thresholded_img_float = sitk.Cast(thresholded_img, sitk.sitkFloat32)
     ## multiply 
     pos_sdt_rxs_mask = sitk.Multiply(sdt_rxs_mask_image_by_minus_one, thresholded_img_float)
-    utils.write_debug_image(pos_sdt_rxs_mask,"pos_sdt_rxs_mask.nii.gz")
+    utils.write_debug_image(pos_sdt_rxs_mask, "pos_sdt_rxs_mask.nii.gz", utils.get_output_dir())
 
     ## add the inverse mask sdt to pos mask
     sdt_all = pos_sdt_rxs_mask + sdt_inv_rxs_mask
-    utils.write_debug_image(sdt_all,"sdt_all.nii.gz")
+    utils.write_debug_image(sdt_all, "sdt_all.nii.gz", utils.get_output_dir())
 
     # add 2 to dilate mask
     sdt_all_plus_2 = sdt_all + 2
-    utils.write_debug_image(sdt_all_plus_2,"sdt_all_plus_2.nii.gz")
+    utils.write_debug_image(sdt_all_plus_2, "sdt_all_plus_2.nii.gz", utils.get_output_dir())
 
     return sdt_all_plus_2
 
@@ -149,16 +149,16 @@ def mask_erosions(processed_signed_distance):
         ## threshold and binarise
         eroded_rxs_mask = processed_signed_distance > erode_depth
         eroded_rxs_mask_float = sitk.Cast(eroded_rxs_mask, sitk.sitkFloat32)
-        utils.write_debug_image(eroded_rxs_mask_float,f'{zero_padded_erode_depth}_eroded_rxs_mask.nii.gz')
+        utils.write_debug_image(eroded_rxs_mask_float, f'{zero_padded_erode_depth}_eroded_rxs_mask.nii.gz', utils.get_output_dir())
         
         ##smooth
         smoothed_eroded_rxs_mask = sitk.DiscreteGaussian(eroded_rxs_mask_float, 3.0)
-        utils.write_debug_image(smoothed_eroded_rxs_mask,f'{zero_padded_erode_depth}_smoothed_eroded_rxs_mask.nii.gz')
+        utils.write_debug_image(smoothed_eroded_rxs_mask, f'{zero_padded_erode_depth}_smoothed_eroded_rxs_mask.nii.gz', utils.get_output_dir())
         
         bin_smoothed_eroded_rxs_mask = smoothed_eroded_rxs_mask > 0.5
         bin_smoothed_eroded_rxs_mask_float = sitk.Cast(bin_smoothed_eroded_rxs_mask, sitk.sitkFloat32)
 
-        utils.write_debug_image(bin_smoothed_eroded_rxs_mask_float,f'{zero_padded_erode_depth}_bin_smoothed_eroded_rxs_mask.nii.gz')
+        utils.write_debug_image(bin_smoothed_eroded_rxs_mask_float, f'{zero_padded_erode_depth}_bin_smoothed_eroded_rxs_mask.nii.gz', utils.get_output_dir())
         
         ## put extra step in here for smoothing? 
         eroded_masks_dict[eroded_mask_file_name] = bin_smoothed_eroded_rxs_mask_float
@@ -185,7 +185,7 @@ def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outp
         Dictionary containing the eroded masks
     """
     ## Output directory from directory structure, within 'Eroded_nifti' dir
-    eroded_outdir = os.path.join(utils.test_output_dir, directory_for_outputs)
+    eroded_outdir = os.path.join(utils.get_output_dir(), directory_for_outputs)
     
     ## sitk image object, image to erode
     im_to_erode = image_to_erode 
