@@ -2,6 +2,7 @@ import os
 import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
+import glob
 
 from . import utils
 
@@ -60,17 +61,38 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
     ## itself sits in though. 
  
+    reoriented_im_path = os.path.join(utils.get_output_dir(), f"{input_filetype_string}_ro.nii.gz")
     reorient = fsl.Reorient2Std()
     reorient.inputs.in_file = file_for_reorient
-    ## this works if the output type is specified but it also outputs a file with "to_ROI" suffix in the working directory
     reorient.inputs.output_type = 'NIFTI_GZ'
-    ## this line apparently needed to prevent temp files with "to_ROI" suffix being written out
-    ## does not work, also no documentation.
-    #reorient.inputs.generate_report = False
-    reoriented_im_path = os.path.join(utils.get_output_dir(), f"{input_filetype_string}_ro.nii.gz")
     reorient.inputs.out_file = reoriented_im_path
-    res = reorient.run()
-    
+
+    original_cwd = os.getcwd()
+    try:
+        # Try to change to the output directory
+        os.makedirs(utils.get_output_dir(), exist_ok=True)
+        os.chdir(utils.get_output_dir())
+        res = reorient.run()
+        # Clean up any _to_ROI.nii.gz files created by FSL
+        for roi_file in glob.glob("*_to_ROI.nii.gz"):
+            try:
+                os.remove(roi_file)
+            except Exception as cleanup_err:
+                print(f"[WARNING] Could not remove temp file {roi_file}: {cleanup_err}")
+    except Exception as e:
+        print(f"[WARNING] Could not change directory for FSL Reorient2Std: {e}")
+        # Run anyway, files will be written to current directory
+        res = reorient.run()
+        # Clean up in the current directory
+        for roi_file in glob.glob("*_to_ROI.nii.gz"):
+            try:
+                os.remove(roi_file)
+            except Exception as cleanup_err:
+                print(f"[WARNING] Could not remove temp file {roi_file}: {cleanup_err}")
+    finally:
+        # Always restore the original working directory
+        os.chdir(original_cwd)
+
     return reoriented_im_path
 
 def preprocess_main_image(input_t1):
