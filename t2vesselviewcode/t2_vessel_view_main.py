@@ -28,19 +28,34 @@ from . import masking
 #import nipype.pipeline.engine as pe
 #import nipype.interfaces.io as nio
 
+## validate input files before processing
+print("Validating input files...")
+is_valid, errors = input_validation.validate_input_files(
+    utils.input_t1_path, 
+    utils.test_output_dir,
+    {
+        't2_sag': utils.input_t2_sag_path,
+        't2_cor': utils.input_t2_cor_path,
+        't2_tra': utils.input_t2_tra_path,
+        'flair': utils.input_flair_path
+    }
+)
+
+if not is_valid:
+    print("Input validation failed:")
+    for error in errors:
+        print(f"  - {error}")
+    sys.exit(1)
+else:
+    print("All input files validated successfully!")
+
 ## create directory structure
 dir_structure.create_directories()
-
-
 
 viewer = sitk.ImageViewer()
 viewer.SetFileExtension('.nii.gz')
 viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
 ##viewer.Execute(file)
-
-
-
-
 
 
 

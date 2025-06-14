@@ -59,7 +59,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     ## reorient
     ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
     ## itself sits in though. 
-    ## tried to use nipype for fslreorient2std - it causes an error seemingly related to PYTHONPATH and io.py but only if run in rstudio
+ 
     reorient = fsl.Reorient2Std()
     reorient.inputs.in_file = file_for_reorient
     ## this works if the output type is specified but it also outputs a file with "to_ROI" suffix in the working directory
