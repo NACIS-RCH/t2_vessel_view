@@ -24,6 +24,10 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
         Path to converted reoriented file
     
     """
+    if not raw_input_file:
+        print(f"[INFO] No input provided for {input_filetype_string}, skipping.")
+        return None
+    
     print(f"[INFO] Converting DICOM to NIfTI for {input_filetype_string}")
     # Check if input is DICOM and convert to NIfTI if needed
     if os.path.isdir(raw_input_file) or raw_input_file.lower().endswith('.dcm'):
