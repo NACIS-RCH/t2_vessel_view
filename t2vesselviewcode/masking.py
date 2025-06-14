@@ -167,9 +167,22 @@ def mask_erosions(processed_signed_distance):
     ## return dictionary with mask file names and objects, and zero padded erode depths for use in other file names
     return (eroded_masks_dict, zero_padded_erode_depths_list)
 
-def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outputs):
+def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outputs, zero_padded_erode_depths_list, eroded_masks_dict):
     """
     Multiply masks by images.
+    
+    Parameters
+    ----------
+    image_to_erode : SimpleITK image
+        The image to be masked
+    filetype_string : str
+        String identifier for the image type (e.g., "t1", "t2_sag")
+    directory_for_outputs : str
+        Directory where output files will be saved
+    zero_padded_erode_depths_list : list
+        List of zero-padded erosion depths
+    eroded_masks_dict : dict
+        Dictionary containing the eroded masks
     """
     ## Output directory from directory structure, within 'Eroded_nifti' dir
     eroded_outdir = os.path.join(utils.test_output_dir, directory_for_outputs)
