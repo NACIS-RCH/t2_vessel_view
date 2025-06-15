@@ -173,16 +173,15 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
         
     Returns
     -------
-    String
-        Preprocessed image path
-    
+    Tuple[str, SimpleITK.Image]
+        Preprocessed image path and the SimpleITK image object
     """
     if TEST_MODE:
         # Return dummy data for testing
         dummy_path = os.path.join(utils.get_output_dir(), f"{input_imagetype_string}_registered.nii.gz")
         dummy_image = sitk.Image([100, 100, 100], sitk.sitkFloat32)
         sitk.WriteImage(dummy_image, dummy_path)
-        return dummy_path
+        return dummy_path, dummy_image
     
     ## load im
     im_raw = sitk.ReadImage(input_raw)
@@ -212,7 +211,7 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     registered_im_path = os.path.join(utils.get_output_dir(), f"registered_{input_imagetype_string}.nii.gz")
     ants.image_write(registered_im, registered_im_path)
     
-     
+    
     ## rescale image intensities. needs to have sitk image loaded not ants image
     sitk_registered_im = sitk.ReadImage(registered_im_path)
     sitk_registered_im_float = sitk.Cast(sitk_registered_im, sitk.sitkFloat32)
@@ -223,7 +222,7 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     preprocessed_im_path = os.path.join(utils.get_output_dir(), f"Preprocessed_{input_imagetype_string}.nii.gz")
     sitk.WriteImage(registered_im_resc, preprocessed_im_path)
     
-    return preprocessed_im_path
+    return preprocessed_im_path, registered_im_resc
 
 def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
     """

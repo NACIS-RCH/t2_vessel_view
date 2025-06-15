@@ -7,6 +7,7 @@ from scipy.spatial import ConvexHull
 from scipy.spatial import Delaunay
 import argparse
 import SimpleITK as sitk
+from . import dir_structure
 
 test_data_dir = 'tests/test_data'
 test_output_dir = 'tests/test_data/test_outputs'
@@ -41,7 +42,7 @@ def make_hull_mask(regular_mask):
     hull_image[out_idx] = 1
     
     ## save nifti output hull image
-    out_nii=nb.Nifti1Image(hull_image, mask_nii.affine, mask_nii.header).to_filename(os.path.join(test_output_dir, "hull_mask.nii.gz"))
+    out_nii=nb.Nifti1Image(hull_image, mask_nii.affine, mask_nii.header).to_filename(os.path.join(dir_structure.processing_mask_dir, "hull_mask.nii.gz"))
     ## if return code not zero, print saved image in location.
     
     
@@ -70,11 +71,11 @@ def make_hull_mask(regular_mask):
     
     #    out_shadow_nii=nb.Nifti1Image(shadow, mask_nii.affine, mask_nii.header).to_filename(os.path.join(mask_dir, f'shadow_{mask}'))
     
-    out_top_hull_nii=nb.Nifti1Image(mask_top_hull, mask_nii.affine, mask_nii.header).to_filename(os.path.join(test_output_dir, "hull_top_mask.nii.gz"))
+    out_top_hull_nii=nb.Nifti1Image(mask_top_hull, mask_nii.affine, mask_nii.header).to_filename(os.path.join(dir_structure.processing_mask_dir, "hull_top_mask.nii.gz"))
     
     ### add section to remove sides
     
-    top_hull_img = sitk.ReadImage(os.path.join(test_output_dir, "hull_top_mask.nii.gz"))
+    top_hull_img = sitk.ReadImage(os.path.join(dir_structure.processing_mask_dir, "hull_top_mask.nii.gz"))
     
     ## scaling factors
     x_scale = 1.3
@@ -90,13 +91,13 @@ def make_hull_mask(regular_mask):
     
     ## resample using the affine transform
     squished_mask = sitk.Resample(top_hull_img, top_hull_img.GetSize(), affine_transform, sitk.sitkNearestNeighbor, top_hull_img.GetOrigin(), top_hull_img.GetSpacing(), top_hull_img.GetDirection(), 0.0, top_hull_img.GetPixelID())
-    sitk.WriteImage(squished_mask, os.path.join(test_output_dir, "test_squished_mask.nii.gz"))
+    sitk.WriteImage(squished_mask, os.path.join(dir_structure.processing_mask_dir, "test_squished_mask.nii.gz"))
     
     ## another example 
     ## main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
     
     squished_multiplied_mask = sitk.Multiply(top_hull_img, squished_mask)
-    sitk.WriteImage(squished_multiplied_mask, os.path.join(test_output_dir, "squished_multiplied_mask.nii.gz"))
+    sitk.WriteImage(squished_multiplied_mask, os.path.join(dir_structure.processing_mask_dir, "squished_multiplied_mask.nii.gz"))
     
     squished_multiplied_mask_float = sitk.Cast(squished_multiplied_mask, sitk.sitkFloat32)
     mask_nii_sitk = sitk.ReadImage(mask_path)
@@ -106,7 +107,7 @@ def make_hull_mask(regular_mask):
     test_final_hull_mask_bin = test_final_hull_mask > 0
     test_final_hull_mask_bin_float = sitk.Cast(test_final_hull_mask_bin, sitk.sitkFloat32)
     
-    sitk.WriteImage(test_final_hull_mask_bin_float, os.path.join(test_output_dir, "test_final_hull_mask.nii.gz"))
+    sitk.WriteImage(test_final_hull_mask_bin_float, os.path.join(dir_structure.processing_mask_dir, "test_final_hull_mask.nii.gz"))
     
     return out_top_hull_nii, test_final_hull_mask
 
