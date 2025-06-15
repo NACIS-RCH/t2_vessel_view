@@ -23,11 +23,6 @@ from . import utils
 from . import masking
 
 
-## test imports
-#import nipype.interfaces.utility as util
-#import nipype.pipeline.engine as pe
-#import nipype.interfaces.io as nio
-
 def main():
     # Validate input files before processing
     print("Validating input files...")
@@ -58,69 +53,6 @@ def main():
     viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
     ##viewer.Execute(file)
 
-
-
-    ## make directory structure
-
-    # ## base directory that will be from arguments
-    # base_directory = utils.test_output_dir
-    # ## define directory structure. add option to change main directory name or add suffix
-    # 
-    # ## specify output directories as variables
-    # main_t2vv_dir = "T2VesselView"
-    # eroded_nifti_dir = "T2VesselView/Eroded_nifti"
-    # eroded_nifti_t1_dir = "T2VesselView/Eroded_nifti/T1"
-    # eroded_nifti_t2_dir = "T2VesselView/Eroded_nifti/T2"
-    # eroded_nifti_flair_dir = "T2VesselView/Eroded_nifti/FLAIR"
-    # powerpoints_dir = "T2VesselView/PowerPoints"
-    # processing_dir = "T2VesselView/Processing"
-    # processing_figures_dir = "T2VesselView/Processing/Figures_for_QA"
-    # processing_log_dir = "T2VesselView/Processing/Log_files"
-    # processing_mask_dir = "T2VesselView/Processing/Masks"
-    # processed_t1_dir = "T2VesselView/Processing/Preprocessed_T1"
-    # processed_t2_dir = "T2VesselView/Processing/Preprocessed_T2"
-    # processed_flair_dir = "T2VesselView/Processing/Preprocessed_FLAIR"
-    # renders_dir = "T2VesselView/3D_renders_png"
-    # renders_t1_dir = "T2VesselView/3D_renders_png/T1_3D_renders"
-    # renders_t1_erode_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level"
-    # renders_t1_angle_dir = "T2VesselView/3D_renders_png/T1_3D_renders/by_angle"
-    # renders_t2_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders"
-    # renders_t2_erode_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level"
-    # renders_t2_angle_dir = "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle"
-    # 
-    # ## specify directories to be made
-    # directory_structure = [
-    #     main_t2vv_dir,
-    #     eroded_nifti_dir,
-    #     eroded_nifti_t1_dir,
-    #     eroded_nifti_t2_dir,
-    #     eroded_nifti_flair_dir,
-    #     powerpoints_dir,
-    #     processing_dir,
-    #     processing_figures_dir,
-    #     processing_log_dir,
-    #     processing_mask_dir,
-    #     processed_t1_dir,
-    #     processed_t2_dir,
-    #     processed_flair_dir,
-    #     renders_dir,
-    #     renders_t1_dir,
-    #     renders_t1_erode_dir,
-    #     renders_t1_angle_dir,
-    #     renders_t2_dir,
-    #     renders_t2_erode_dir,
-    #     renders_t2_angle_dir
-    # ]
-    # 
-    # ## create directories
-    # for directory in directory_structure:
-    #     directory_path = os.path.join(base_directory, directory)
-    #     os.makedirs(directory_path, exist_ok = True)
-    
-    ## verify directory structure
-    #for root, dirs, files in os.walk(base_directory):
-    #    for dir in dirs:
-    #        print(os.path.join(root, dir))
 
 
 
@@ -193,12 +125,12 @@ def main():
     if eroded_masks_dict and zero_padded_erode_depths_list:
         if preprocessed_main_image:
             res_t1 = masking.multiply_masks_by_images(preprocessed_main_image, "t1", dir_structure.eroded_nifti_t1_dir, zero_padded_erode_depths_list, eroded_masks_dict)
-        if preprocessed_t2_sag_img:
-            res_t2_sag = masking.multiply_masks_by_images(preprocessed_t2_sag_img, "t2_sag", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
-        if preprocessed_t2_cor_img:
-            res_t2_cor = masking.multiply_masks_by_images(preprocessed_t2_cor_img, "t2_cor", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
-        if preprocessed_t2_tra_img:
-            res_t2_tra = masking.multiply_masks_by_images(preprocessed_t2_tra_img, "t2_tra", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+        if postprocessed_t2_sag_image:
+            res_t2_sag = masking.multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+        if postprocessed_t2_cor_image:
+            res_t2_cor = masking.multiply_masks_by_images(postprocessed_t2_cor_image, "t2_cor", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+        if postprocessed_t2_tra_image:
+            res_t2_tra = masking.multiply_masks_by_images(postprocessed_t2_tra_image, "t2_tra", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if preprocessed_flair_img:
             res_flair = masking.multiply_masks_by_images(preprocessed_flair_img, "flair", dir_structure.eroded_nifti_flair_dir, zero_padded_erode_depths_list, eroded_masks_dict)
 

@@ -269,20 +269,21 @@ def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
         Postprocessed T2 image path
     
     """
+    output_dir = get_preprocessed_dir(preprocessed_imagetype_string)
     ## load preprocessed t2
     t2_pre = sitk.ReadImage(preprocessed_t2_input_path)
     
     t2_inv = sitk.InvertIntensity(t2_pre)
-    utils.write_debug_image(t2_inv, f"inv_{preprocessed_imagetype_string}.nii.gz", utils.get_output_dir())
+    utils.write_debug_image(t2_inv, f"inv_{preprocessed_imagetype_string}.nii.gz", output_dir)
     
     t2_inv_rescale = sitk.RescaleIntensity(t2_inv, outputMinimum = 0, outputMaximum = 1000)
-    utils.write_debug_image(t2_inv_rescale, f"inv_rescale_{preprocessed_imagetype_string}.nii.gz", utils.get_output_dir())
+    utils.write_debug_image(t2_inv_rescale, f"inv_rescale_{preprocessed_imagetype_string}.nii.gz", output_dir)
     
     t2_inv_sqr = sitk.Pow(t2_inv_rescale, 2)
-    utils.write_debug_image(t2_inv_sqr, f"inv_sqr_{preprocessed_imagetype_string}.nii.gz", utils.get_output_dir())
+    utils.write_debug_image(t2_inv_sqr, f"inv_sqr_{preprocessed_imagetype_string}.nii.gz", output_dir)
 
     t2_inv_re_rescale = sitk.RescaleIntensity(t2_inv_sqr, outputMinimum = 0, outputMaximum = 1000)
-    utils.write_debug_image(t2_inv_re_rescale, f"inv_sqr_re_rescale_{preprocessed_imagetype_string}.nii.gz", utils.get_output_dir())
+    utils.write_debug_image(t2_inv_re_rescale, f"inv_sqr_re_rescale_{preprocessed_imagetype_string}.nii.gz", output_dir)
     
     return t2_inv_rescale
     

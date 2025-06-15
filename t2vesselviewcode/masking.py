@@ -87,7 +87,8 @@ def main_mask_operations(resampled_mask):
     ## check this line
     rxs_mask = sitk.ReadImage(mask_to_process)
     ## smooth mask with gaussian kernel size 3
-    smoothed_rxs_mask = sitk.DiscreteGaussian(rxs_mask, 3.0)
+    rxs_mask_float = sitk.Cast(rxs_mask, sitk.sitkFloat32)
+    smoothed_rxs_mask = sitk.DiscreteGaussian(rxs_mask_float, 3.0)
     utils.write_debug_image(smoothed_rxs_mask, "smoothed_rxs_mask.nii.gz", dir_structure.processing_mask_dir)
     
     ## Binarize the smoothed mask using a threshold of 0.5
