@@ -32,4 +32,7 @@ dependencies = [
 [project.urls]
 Documentation = "https://github.com/NACIS-RCH/t2_vessel_view#readme"
 Source = "https://github.com/NACIS-RCH/t2_vessel_view"
-Tracker = "https://github.com/NACIS-RCH/t2_vessel_view/issues" 
+Tracker = "https://github.com/NACIS-RCH/t2_vessel_view/issues"
+
+[project.scripts]
+t2vesselview = "t2vesselviewcode.t2_vessel_view_main:main" 
