@@ -1,13 +1,14 @@
 import os
+from . import commandline
 
 ## make directory structure
 
 
 ## use temporary dir for development
-test_output_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv'
+#test_output_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_outputs'
 
-## base directory that will be from arguments
-base_directory = test_output_dir
+## base directory is set from command line arguments: output_dir if provided, otherwise mri_dir
+base_directory = commandline.args.output_dir or commandline.args.mri_dir
 ## define directory structure. add option to change main directory name or add suffix
 
 ## specify output directories as variables
