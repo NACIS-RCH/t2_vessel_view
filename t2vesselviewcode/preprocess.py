@@ -5,8 +5,31 @@ import ants
 import glob
 
 from . import utils
+from . import dir_structure
 
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
+
+def get_preprocessed_dir(image_type):
+    """
+    Returns the correct preprocessed directory for a given image type string.
+    """
+    t = image_type.lower()
+    if t == "flair":
+        return dir_structure.processed_flair_dir
+    elif t == "t1":
+        return dir_structure.processed_t1_dir
+    elif t == "t2_tra":
+        return dir_structure.processed_t2_tra_dir
+    elif t == "t2_cor":
+        return dir_structure.processed_t2_cor_dir
+    elif t == "t2_sag":
+        return dir_structure.processed_t2_sag_dir
+    elif t == "t2_3d":
+        return dir_structure.processed_t2_3d_dir
+    elif t.startswith("t2"):
+        return dir_structure.processed_t2_dir
+    else:
+        return utils.get_output_dir()
 
 def convert_and_reorient(raw_input_file, input_filetype_string):
     """
@@ -28,6 +51,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
         print(f"[INFO] No input provided for {input_filetype_string}, skipping.")
         return None
     
+    output_dir = get_preprocessed_dir(input_filetype_string)
     print(f"[INFO] Converting DICOM to NIfTI for {input_filetype_string}")
     # Check if input is DICOM and convert to NIfTI if needed
     if os.path.isdir(raw_input_file) or raw_input_file.lower().endswith('.dcm'):
@@ -47,7 +71,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
             image = reader.Execute()
             
             # Save as temporary NIfTI for FSL processing
-            temp_nifti_path = os.path.join(utils.get_output_dir(), f"{input_filetype_string}_temp.nii.gz")
+            temp_nifti_path = os.path.join(output_dir, f"{input_filetype_string}_temp.nii.gz")
             sitk.WriteImage(image, temp_nifti_path)
             
             # Use the converted file for reorientation
@@ -65,7 +89,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
     ## itself sits in though. 
  
-    reoriented_im_path = os.path.join(utils.get_output_dir(), f"{input_filetype_string}_ro.nii.gz")
+    reoriented_im_path = os.path.join(output_dir, f"{input_filetype_string}_ro.nii.gz")
     reorient = fsl.Reorient2Std()
     reorient.inputs.in_file = file_for_reorient
     reorient.inputs.output_type = 'NIFTI_GZ'
@@ -74,8 +98,8 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     original_cwd = os.getcwd()
     try:
         # Try to change to the output directory
-        os.makedirs(utils.get_output_dir(), exist_ok=True)
-        os.chdir(utils.get_output_dir())
+        os.makedirs(output_dir, exist_ok=True)
+        os.chdir(output_dir)
         res = reorient.run()
         # Clean up any _to_ROI.nii.gz files created by FSL
         for roi_file in glob.glob("*_to_ROI.nii.gz"):
@@ -115,10 +139,11 @@ def preprocess_main_image(input_t1):
         Preprocessed T1 image.
     
     """
+    output_dir = get_preprocessed_dir("t1")
     if TEST_MODE:
         # Return dummy data for testing
         dummy_image = sitk.Image([100, 100, 100], sitk.sitkFloat32)
-        dummy_path = os.path.join(utils.get_output_dir(), "Preprocessed_main_image.nii.gz")
+        dummy_path = os.path.join(output_dir, "Preprocessed_main_image.nii.gz")
         sitk.WriteImage(dummy_image, dummy_path)
         return dummy_image, dummy_path
     
@@ -131,11 +156,11 @@ def preprocess_main_image(input_t1):
     crop.inputs.brainsize = 160
     ## this doesn't work but there's no documentation for an alternative
     #crop.inputs.generate_report = False
-    crop.inputs.out_roi = os.path.join(utils.get_output_dir(), "T1_crop.nii.gz")
+    crop.inputs.out_roi = os.path.join(output_dir, "T1_crop.nii.gz")
     res = crop.run()
     
     ## sitk n4 (THIS WORKS)
-    main_image_crop = sitk.ReadImage(os.path.join(utils.get_output_dir(), "T1_crop.nii.gz"))
+    main_image_crop = sitk.ReadImage(os.path.join(output_dir, "T1_crop.nii.gz"))
     #main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
     #write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
     
@@ -151,10 +176,10 @@ def preprocess_main_image(input_t1):
     
     main_image_crop_n4_rs_resc = sitk.RescaleIntensity(main_image_crop_n4_rs, outputMinimum = 0, outputMaximum = 1000)
     
-    main_image_crop_n4_rs_resc_path = os.path.join(utils.get_output_dir(), "Preprocessed_main_image.nii.gz")
+    main_image_crop_n4_rs_resc_path = os.path.join(output_dir, "Preprocessed_main_image.nii.gz")
     ## need to write this out partly because ANTS needs it 
     sitk.WriteImage(main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path)
-    utils.write_debug_image(main_image_crop_n4_rs_resc, "main_image_crop_n4_rs_resc.nii.gz", utils.get_output_dir())
+    utils.write_debug_image(main_image_crop_n4_rs_resc, "main_image_crop_n4_rs_resc.nii.gz", output_dir)
     
     return main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path
 
@@ -176,9 +201,10 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     Tuple[str, SimpleITK.Image]
         Preprocessed image path and the SimpleITK image object
     """
+    output_dir = get_preprocessed_dir(input_imagetype_string)
     if TEST_MODE:
         # Return dummy data for testing
-        dummy_path = os.path.join(utils.get_output_dir(), f"{input_imagetype_string}_registered.nii.gz")
+        dummy_path = os.path.join(output_dir, f"{input_imagetype_string}_registered.nii.gz")
         dummy_image = sitk.Image([100, 100, 100], sitk.sitkFloat32)
         sitk.WriteImage(dummy_image, dummy_path)
         return dummy_path, dummy_image
@@ -189,9 +215,9 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
         
     ## sitk n4 im
     im_n4 = sitk.N4BiasFieldCorrection(im_raw_float)
-    im_n4_path = os.path.join(utils.get_output_dir(), f"{input_imagetype_string}_n4.nii.gz") 
+    im_n4_path = os.path.join(output_dir, f"{input_imagetype_string}_n4.nii.gz") 
     sitk.WriteImage(im_n4, im_n4_path)
-    utils.write_debug_image(im_n4, f"{input_imagetype_string}_n4_debug.nii.gz", utils.get_output_dir())
+    utils.write_debug_image(im_n4, f"{input_imagetype_string}_n4_debug.nii.gz", output_dir)
     
     ## register to t1 using ants. have to load as new image
     im_moving_image = utils.read_ants_image(im_n4_path)
@@ -208,7 +234,7 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     registered_im = ants.apply_transforms(fixed = t1_fixed_image, moving = im_moving_image, transformlist = im_to_t1_registration["fwdtransforms"])
     
     # save registered im (this could be a temp file, see how that works)
-    registered_im_path = os.path.join(utils.get_output_dir(), f"registered_{input_imagetype_string}.nii.gz")
+    registered_im_path = os.path.join(output_dir, f"registered_{input_imagetype_string}.nii.gz")
     ants.image_write(registered_im, registered_im_path)
     
     
@@ -219,7 +245,7 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     ## rescale intensity
     registered_im_resc = sitk.RescaleIntensity(sitk_registered_im_float, outputMinimum = 0, outputMaximum = 1000)
     
-    preprocessed_im_path = os.path.join(utils.get_output_dir(), f"Preprocessed_{input_imagetype_string}.nii.gz")
+    preprocessed_im_path = os.path.join(output_dir, f"Preprocessed_{input_imagetype_string}.nii.gz")
     sitk.WriteImage(registered_im_resc, preprocessed_im_path)
     
     return preprocessed_im_path, registered_im_resc

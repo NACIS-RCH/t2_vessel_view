@@ -25,6 +25,10 @@ processing_mask_dir = os.path.join(base_directory, "T2VesselView/Processing/Mask
 processed_t1_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T1")
 processed_t2_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2")
 processed_flair_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_FLAIR")
+processed_t2_tra_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_Tra")
+processed_t2_cor_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_Cor")
+processed_t2_sag_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_Sag")
+processed_t2_3d_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_3D")
 renders_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png")
 renders_t1_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders")
 renders_t1_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level")
@@ -48,6 +52,10 @@ directory_structure = [
     processed_t1_dir,
     processed_t2_dir,
     processed_flair_dir,
+    processed_t2_tra_dir,
+    processed_t2_cor_dir,
+    processed_t2_sag_dir,
+    processed_t2_3d_dir,
     renders_dir,
     renders_t1_dir,
     renders_t1_erode_dir,
