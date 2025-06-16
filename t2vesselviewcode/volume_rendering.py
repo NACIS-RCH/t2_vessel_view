@@ -35,11 +35,11 @@ def render_volume_and_save_pngs_pyvista(
         data = (data - vmin) / (vmax - vmin)  # normalize to 0-1
 
         # Create PyVista UniformGrid
-        grid = pv.UniformGrid()
-        grid.dimensions = data.shape
-        grid.spacing = img.header.get_zooms()  # voxel size
+        grid = pv.ImageData()
+        grid.dimensions = np.array(data.shape) + 1
         grid.origin = (0, 0, 0)
-        grid.point_arrays['values'] = data.flatten(order='F')
+        grid.spacing = img.header.get_zooms()
+        grid.cell_data["values"] = data.flatten(order="F")
 
         # Set up plotter (offscreen)
         plotter = pv.Plotter(off_screen=True, window_size=image_size)
@@ -100,8 +100,8 @@ def render_volume_and_save_pngs_vedo(
         data = (data - vmin) / (vmax - vmin)  # normalize to 0-1
 
         vol = Volume(data)
-        vol.cmap('gray')
-        vol.alpha([0, 0, 1, 1])  # No transparency on main volume
+        #vol.cmap('gray')
+        #vol.alpha([0, 0, 1, 1])  # No transparency on main volume
 
         for name, azimuth, elevation in angles:
             plt = Plotter(offscreen=True, size=image_size, bg='black')
