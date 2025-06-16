@@ -16,6 +16,10 @@ main_t2vv_dir = os.path.join(base_directory, "T2VesselView")
 eroded_nifti_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti")
 eroded_nifti_t1_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T1")
 eroded_nifti_t2_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2")
+eroded_nifti_t2_tra_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_Tra")
+eroded_nifti_t2_cor_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_Cor")
+eroded_nifti_t2_sag_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_Sag")
+eroded_nifti_t2_3d_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_3D")
 eroded_nifti_flair_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/FLAIR")
 powerpoints_dir = os.path.join(base_directory, "T2VesselView/PowerPoints")
 processing_dir = os.path.join(base_directory, "T2VesselView/Processing")
@@ -43,6 +47,10 @@ directory_structure = [
     eroded_nifti_dir,
     eroded_nifti_t1_dir,
     eroded_nifti_t2_dir,
+    eroded_nifti_t2_tra_dir,
+    eroded_nifti_t2_cor_dir,
+    eroded_nifti_t2_sag_dir,
+    eroded_nifti_t2_3d_dir,
     eroded_nifti_flair_dir,
     powerpoints_dir,
     processing_dir,
