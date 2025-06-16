@@ -112,6 +112,10 @@ def main():
     if preprocessed_t2_cor_path:
         postprocessed_t2_cor_image = preprocess.postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 
+    postprocessed_t2_3d_image = None
+    if commandline.args.t2_3d:
+        postprocessed_t2_3d_image = preprocess.postprocess_t2(commandline.args.t2_3d, "t2_3d")
+
     ## generate mask
     mask_to_input = masking.generate_mask(preprocessed_flair)
 
@@ -133,6 +137,8 @@ def main():
             res_t2_tra = masking.multiply_masks_by_images(postprocessed_t2_tra_image, "t2_tra", dir_structure.eroded_nifti_t2_tra_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if preprocessed_flair_img:
             res_flair = masking.multiply_masks_by_images(preprocessed_flair_img, "flair", dir_structure.eroded_nifti_flair_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+        if postprocessed_t2_3d_image:
+            res_t2_3d = masking.multiply_masks_by_images(postprocessed_t2_3d_image, "t2_3d", dir_structure.eroded_nifti_t2_3d_dir, zero_padded_erode_depths_list, eroded_masks_dict)
 
     return 0
 
