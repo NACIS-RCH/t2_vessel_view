@@ -119,6 +119,14 @@ def main():
     ## generate mask
     mask_to_input = masking.generate_mask(preprocessed_flair)
 
+    # --- Save QA overlay of generated mask on main image (all axes) ---
+    mask_img_for_qa = sitk.ReadImage(mask_to_input)
+    utils.save_qa_mask_overlay(
+        main_image=preprocessed_main_image,
+        mask_image=mask_img_for_qa,
+        filename="QA_mask_overlay_initial.png"
+    )
+    
     ## process mask
     sdt_all_plus_2 = masking.main_mask_operations(mask_to_input)
 
