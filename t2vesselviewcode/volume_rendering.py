@@ -3,7 +3,7 @@ import nibabel as nib
 import numpy as np
 import os
 
-def render_volume_and_save_pngs(
+def render_volume_and_save_pngs_pyvista(
     nifti_paths,
     output_dir,
     angles=[('left', 90, 0), ('right', 270, 0), ('posterior', 0, 0), ('anterior', 180, 0), ('superior', 0, 90), ('inferior', 180, -90)],
@@ -63,4 +63,54 @@ def render_volume_and_save_pngs(
             os.makedirs(outdir, exist_ok=True)
             outpath = os.path.join(outdir, f"{name}-{azimuth}-{elevation}-{os.path.basename(nifti_path).split('.')[0]}.png")
             plotter.show(screenshot=outpath, auto_close=False)
-        plotter.close() 
+        plotter.close()
+
+def render_volume_and_save_pngs_vedo(
+    nifti_paths,
+    output_dir,
+    angles=[('left', 90, 0), ('right', 270, 0), ('posterior', 0, 0), ('anterior', 180, 0), ('superior', 0, 90), ('inferior', 180, -90)],
+    window=(0, 1000),
+    image_size=(800, 800)
+):
+    """
+    Render a list of NIfTI volumes using vedo and save PNG screenshots from multiple angles.
+    Parameters
+    ----------
+    nifti_paths : list of str
+        List of paths to NIfTI files to render.
+    output_dir : str
+        Directory to save PNG screenshots (by angle subfolders will be created).
+    angles : list of (str, float, float)
+        List of (name, azimuth, elevation) tuples for camera angles.
+    window : (float, float)
+        Intensity window (min, max) for display.
+    image_size : (int, int)
+        Output PNG size in pixels.
+    """
+    from vedo import Volume, Plotter
+    import nibabel as nib
+    import numpy as np
+    import os
+
+    for nifti_path in nifti_paths:
+        img = nib.load(nifti_path)
+        data = img.get_fdata()
+        vmin, vmax = window
+        data = np.clip(data, vmin, vmax)
+        data = (data - vmin) / (vmax - vmin)  # normalize to 0-1
+
+        vol = Volume(data)
+        vol.cmap('gray')
+        vol.alpha([0, 0, 1, 1])  # No transparency on main volume
+
+        for name, azimuth, elevation in angles:
+            plt = Plotter(offscreen=True, size=image_size, bg='black')
+            plt.show(vol, resetcam=True)
+            plt.camera.Azimuth(azimuth)
+            plt.camera.Elevation(elevation)
+            plt.camera.Zoom(1.0)
+            outdir = os.path.join(output_dir, 'by_angle', name)
+            os.makedirs(outdir, exist_ok=True)
+            outpath = os.path.join(outdir, f"{name}-{azimuth}-{elevation}-{os.path.basename(nifti_path).split('.')[0]}.png")
+            plt.screenshot(outpath)
+            plt.close() 
