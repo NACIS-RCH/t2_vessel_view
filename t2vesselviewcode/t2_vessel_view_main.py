@@ -126,11 +126,11 @@ def main():
         if preprocessed_main_image:
             res_t1 = masking.multiply_masks_by_images(preprocessed_main_image, "t1", dir_structure.eroded_nifti_t1_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if postprocessed_t2_sag_image:
-            res_t2_sag = masking.multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+            res_t2_sag = masking.multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", dir_structure.eroded_nifti_t2_sag_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if postprocessed_t2_cor_image:
-            res_t2_cor = masking.multiply_masks_by_images(postprocessed_t2_cor_image, "t2_cor", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+            res_t2_cor = masking.multiply_masks_by_images(postprocessed_t2_cor_image, "t2_cor", dir_structure.eroded_nifti_t2_cor_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if postprocessed_t2_tra_image:
-            res_t2_tra = masking.multiply_masks_by_images(postprocessed_t2_tra_image, "t2_tra", dir_structure.eroded_nifti_t2_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+            res_t2_tra = masking.multiply_masks_by_images(postprocessed_t2_tra_image, "t2_tra", dir_structure.eroded_nifti_t2_tra_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if preprocessed_flair_img:
             res_flair = masking.multiply_masks_by_images(preprocessed_flair_img, "flair", dir_structure.eroded_nifti_flair_dir, zero_padded_erode_depths_list, eroded_masks_dict)
 
