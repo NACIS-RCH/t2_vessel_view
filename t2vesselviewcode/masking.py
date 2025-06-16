@@ -63,6 +63,9 @@ def generate_mask(image_for_mask):
     
     ## get the mask
     hires_mask_path = os.path.join(dir_structure.processing_mask_dir, "test_bet_hires_brain_mask.nii.gz")
+
+
+
     return hires_mask_path
 
 def main_mask_operations(resampled_mask): 
@@ -86,6 +89,9 @@ def main_mask_operations(resampled_mask):
     else:
         mask_to_process = resampled_mask
     
+    print("[INFO] Performing main mask operations")
+    print(f"[INFO] Mask to process: {mask_to_process}")
+
     ## check this line
     rxs_mask = sitk.ReadImage(mask_to_process)
     ## smooth mask with gaussian kernel size 3
@@ -147,6 +153,8 @@ def mask_erosions(processed_signed_distance):
     ## make list of eroded mask file names?
     eroded_masks_dict = {}
     zero_padded_erode_depths_list = []
+    
+    print("[INFO] Performing mask erosions")
     
     for erode_depth in erode_depths_list:
         
