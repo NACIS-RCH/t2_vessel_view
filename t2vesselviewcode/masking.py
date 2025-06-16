@@ -36,6 +36,8 @@ def generate_mask(image_for_mask):
         sitk.WriteImage(dummy_mask, dummy_mask_path)
         return dummy_mask_path
     
+    print("[INFO] Generating brain mask")
+    
     ## this BET call works, partially. tested it on a raw T1.
     btr=fsl.BET()
     btr.inputs.in_file = image_for_mask

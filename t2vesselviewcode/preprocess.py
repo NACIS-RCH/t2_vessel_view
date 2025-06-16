@@ -202,6 +202,7 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
         Preprocessed image path and the SimpleITK image object
     """
     output_dir = get_preprocessed_dir(input_imagetype_string)
+    print(f"[INFO] Applying N4 bias correction to {input_imagetype_string}")
     if TEST_MODE:
         # Return dummy data for testing
         dummy_path = os.path.join(output_dir, f"{input_imagetype_string}_registered.nii.gz")
