@@ -96,30 +96,30 @@ def save_qa_mask_overlay(
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
     # --- Axial (z) ---
-    # Show the middle axial slice (z = mid_axial)
-    axes[0].imshow(main_np[mid_axial, :, :], cmap=cmap_main, interpolation="none")
+    # Show the middle axial slice (z = mid_axial) with origin='lower' so anterior/superior are at the top
+    axes[0].imshow(main_np[mid_axial, :, :], cmap=cmap_main, interpolation="none", origin='lower')
     axes[0].imshow(np.ma.masked_where(mask_np[mid_axial, :, :] == 0, mask_np[mid_axial, :, :]),
-                   cmap=cmap_mask, alpha=alpha, interpolation="none")
+                   cmap=cmap_mask, alpha=alpha, interpolation="none", origin='lower')
     axes[0].set_title(f"Axial (z={mid_axial})")
     axes[0].axis("off")
     if show_colorbar:
         plt.colorbar(axes[0].images[0], ax=axes[0], fraction=0.046, pad=0.04)
 
     # --- Coronal (y) ---
-    # Show the middle coronal slice (y = mid_coronal)
-    axes[1].imshow(main_np[:, mid_coronal, :], cmap=cmap_main, interpolation="none")
+    # Show the middle coronal slice (y = mid_coronal) with origin='lower' so superior is at the top
+    axes[1].imshow(main_np[:, mid_coronal, :], cmap=cmap_main, interpolation="none", origin='lower')
     axes[1].imshow(np.ma.masked_where(mask_np[:, mid_coronal, :] == 0, mask_np[:, mid_coronal, :]),
-                   cmap=cmap_mask, alpha=alpha, interpolation="none")
+                   cmap=cmap_mask, alpha=alpha, interpolation="none", origin='lower')
     axes[1].set_title(f"Coronal (y={mid_coronal})")
     axes[1].axis("off")
     if show_colorbar:
         plt.colorbar(axes[1].images[0], ax=axes[1], fraction=0.046, pad=0.04)
 
     # --- Sagittal (x) ---
-    # Show the middle sagittal slice (x = mid_sagittal)
-    axes[2].imshow(main_np[:, :, mid_sagittal], cmap=cmap_main, interpolation="none")
+    # Show the middle sagittal slice (x = mid_sagittal) with origin='lower' so superior is at the top
+    axes[2].imshow(main_np[:, :, mid_sagittal], cmap=cmap_main, interpolation="none", origin='lower')
     axes[2].imshow(np.ma.masked_where(mask_np[:, :, mid_sagittal] == 0, mask_np[:, :, mid_sagittal]),
-                   cmap=cmap_mask, alpha=alpha, interpolation="none")
+                   cmap=cmap_mask, alpha=alpha, interpolation="none", origin='lower')
     axes[2].set_title(f"Sagittal (x={mid_sagittal})")
     axes[2].axis("off")
     if show_colorbar:
