@@ -3,6 +3,9 @@ import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
 import glob
+import shutil
+import nibabel as nib
+import numpy as np
 
 from . import utils
 from . import dir_structure
@@ -70,7 +73,9 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
             reader.SetFileNames(dicom_names)
             image = reader.Execute()
             
-            # Save as temporary NIfTI for FSL processing
+            # Save as temporary NIfTI for processing
+            # Ensure the output directory exists (avoid write failures)
+            os.makedirs(output_dir, exist_ok=True)
             temp_nifti_path = os.path.join(output_dir, f"{input_filetype_string}_temp.nii.gz")
             sitk.WriteImage(image, temp_nifti_path)
             
@@ -83,43 +88,37 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
         # Already NIfTI, use as-is
         file_for_reorient = raw_input_file
     
-    print(f"[INFO] Reorienting {input_filetype_string} image to standard orientation")
-    
-    ## reorient
-    ## this works if not run in rstudio/reticulate. it does put the images in the same directory as the script
-    ## itself sits in though. 
- 
+    print(f"[INFO] Reorienting {input_filetype_string} image to standard RAS orientation")
     reoriented_im_path = os.path.join(output_dir, f"{input_filetype_string}_ro.nii.gz")
-    reorient = fsl.Reorient2Std()
-    reorient.inputs.in_file = file_for_reorient
-    reorient.inputs.output_type = 'NIFTI_GZ'
-    reorient.inputs.out_file = reoriented_im_path
+    # Create output directory if it does not exist
+    os.makedirs(output_dir, exist_ok=True)
 
-    original_cwd = os.getcwd()
+    # Load with nibabel, 
+    img = nib.load(file_for_reorient)
+    # Record the input axis codes (e.g., ('L','P','I')) for logging and QC
+    pre_ax = nib.aff2axcodes(img.affine)
     try:
-        # Try to change to the output directory
-        os.makedirs(output_dir, exist_ok=True)
-        os.chdir(output_dir)
-        res = reorient.run()
-        # Clean up any _to_ROI.nii.gz files created by FSL
-        for roi_file in glob.glob("*_to_ROI.nii.gz"):
-            try:
-                os.remove(roi_file)
-            except Exception as cleanup_err:
-                print(f"[WARNING] Could not remove temp file {roi_file}: {cleanup_err}")
+        # Standardise to RAS orientation (axis permutes/sign flips only; no interpolation)
+        img_ras = nib.as_closest_canonical(img)
     except Exception as e:
-        print(f"[WARNING] Could not change directory for FSL Reorient2Std: {e}")
-        # Run anyway, files will be written to current directory
-        res = reorient.run()
-        # Clean up in the current directory
-        for roi_file in glob.glob("*_to_ROI.nii.gz"):
-            try:
-                os.remove(roi_file)
-            except Exception as cleanup_err:
-                print(f"[WARNING] Could not remove temp file {roi_file}: {cleanup_err}")
-    finally:
-        # Always restore the original working directory
-        os.chdir(original_cwd)
+        # Fail clearly if standardisation cannot be performed
+        raise RuntimeError(f"[ERROR] Standardisation failure for {input_filetype_string}: {e}")
+    # Check the axis codes after standardisation
+    post_ax = nib.aff2axcodes(img_ras.affine)
+    print(f"[INFO] {input_filetype_string} orientation pre→post: {pre_ax} → {post_ax}")
+
+    # Enforce that output is RAS; this is our single canonical standard
+    if post_ax != ('R', 'A', 'S'):
+        raise ValueError(f"[ERROR] Expected RAS after standardisation for {input_filetype_string}, got {post_ax}")
+
+    # Ensure sform and qform explicitly match the RAS affine (prevents downstream ambiguity)
+    hdr = img_ras.header.copy()
+    nib.Nifti1Header.set_sform(hdr, img_ras.affine, code=1)
+    nib.Nifti1Header.set_qform(hdr, img_ras.affine, code=1)
+
+    # Write out as float32 to keep types consistent for subsequent tools
+    data = img_ras.get_fdata(dtype=np.float32)
+    nib.Nifti1Image(data, img_ras.affine, header=hdr).to_filename(reoriented_im_path)
 
     return reoriented_im_path
 
