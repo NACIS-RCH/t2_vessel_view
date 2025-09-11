@@ -9,8 +9,11 @@ import numpy as np
 
 from . import utils
 from . import dir_structure
+from . import commandline
 
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
+
+# ------------------------ Main functions ------------------------
 
 def get_preprocessed_dir(image_type):
     """
