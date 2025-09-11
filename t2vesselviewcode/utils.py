@@ -4,6 +4,7 @@ import ants
 from . import commandline
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import patheffects as pe
 from . import dir_structure
 
 # Flag to control whether debug images are saved
@@ -58,6 +59,8 @@ def save_qa_mask_overlay(
     """
     Save a QA PNG of a mask overlaid on a main image (2D slices) using matplotlib.
     The output figure will show overlays for all three anatomical axes (axial, coronal, sagittal).
+    Assumes volumes have been standardised to RAS (Right–Anterior–Superior) orientation.
+    Displays in radiological convention for axial and coronal (patient's Right on image Left).
 
     Parameters
     ----------
@@ -95,38 +98,58 @@ def save_qa_mask_overlay(
     # Create a figure with 3 subplots (one for each anatomical axis)
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
+    # Common text style with outline for readability
+    text_style = dict(color='w', fontsize=12, weight='bold', ha='center', va='center',
+                      path_effects=[pe.withStroke(linewidth=2, foreground='black')])
+
     # --- Axial (z) ---
-    # Show the middle axial slice (z = mid_axial) with origin='lower' so anterior/superior are at the top
     axes[0].imshow(main_np[mid_axial, :, :], cmap=cmap_main, interpolation="none", origin='lower')
     axes[0].imshow(np.ma.masked_where(mask_np[mid_axial, :, :] == 0, mask_np[mid_axial, :, :]),
                    cmap=cmap_mask, alpha=alpha, interpolation="none", origin='lower')
-    axes[0].set_title(f"Axial (z={mid_axial})")
+    # Radiological display: invert x-axis so patient's Right appears on image Left
+    axes[0].invert_xaxis()
+    axes[0].set_title("Axial")
+    # Labels for radiological axial: left=R, right=L; top=A, bottom=P
+    axes[0].text(0.5, 0.02, 'P', transform=axes[0].transAxes, **text_style)
+    axes[0].text(0.5, 0.98, 'A', transform=axes[0].transAxes, **text_style)
+    axes[0].text(0.02, 0.5, 'R', transform=axes[0].transAxes, **text_style)
+    axes[0].text(0.98, 0.5, 'L', transform=axes[0].transAxes, **text_style)
     axes[0].axis("off")
     if show_colorbar:
         plt.colorbar(axes[0].images[0], ax=axes[0], fraction=0.046, pad=0.04)
 
     # --- Coronal (y) ---
-    # Show the middle coronal slice (y = mid_coronal) with origin='lower' so superior is at the top
     axes[1].imshow(main_np[:, mid_coronal, :], cmap=cmap_main, interpolation="none", origin='lower')
     axes[1].imshow(np.ma.masked_where(mask_np[:, mid_coronal, :] == 0, mask_np[:, mid_coronal, :]),
                    cmap=cmap_mask, alpha=alpha, interpolation="none", origin='lower')
-    axes[1].set_title(f"Coronal (y={mid_coronal})")
+    # Radiological display: invert x-axis so patient's Right appears on image Left
+    axes[1].invert_xaxis()
+    axes[1].set_title("Coronal")
+    # Labels for radiological coronal: left=R, right=L; top=S, bottom=I
+    axes[1].text(0.5, 0.02, 'I', transform=axes[1].transAxes, **text_style)
+    axes[1].text(0.5, 0.98, 'S', transform=axes[1].transAxes, **text_style)
+    axes[1].text(0.02, 0.5, 'R', transform=axes[1].transAxes, **text_style)
+    axes[1].text(0.98, 0.5, 'L', transform=axes[1].transAxes, **text_style)
     axes[1].axis("off")
     if show_colorbar:
         plt.colorbar(axes[1].images[0], ax=axes[1], fraction=0.046, pad=0.04)
 
     # --- Sagittal (x) ---
-    # Show the middle sagittal slice (x = mid_sagittal) with origin='lower' so superior is at the top
     axes[2].imshow(main_np[:, :, mid_sagittal], cmap=cmap_main, interpolation="none", origin='lower')
     axes[2].imshow(np.ma.masked_where(mask_np[:, :, mid_sagittal] == 0, mask_np[:, :, mid_sagittal]),
                    cmap=cmap_mask, alpha=alpha, interpolation="none", origin='lower')
-    axes[2].set_title(f"Sagittal (x={mid_sagittal})")
+    axes[2].set_title("Sagittal")
+    # Sagittal unchanged: left=P, right=A; top=S, bottom=I
+    axes[2].text(0.5, 0.02, 'I', transform=axes[2].transAxes, **text_style)
+    axes[2].text(0.5, 0.98, 'S', transform=axes[2].transAxes, **text_style)
+    axes[2].text(0.02, 0.5, 'P', transform=axes[2].transAxes, **text_style)
+    axes[2].text(0.98, 0.5, 'A', transform=axes[2].transAxes, **text_style)
     axes[2].axis("off")
     if show_colorbar:
         plt.colorbar(axes[2].images[0], ax=axes[2], fraction=0.046, pad=0.04)
 
     # Set the main title and save the figure
-    fig.suptitle("Mask overlay QA: Axial / Coronal / Sagittal", fontsize=16)
+    fig.suptitle("Mask overlay QA (Radiological display)", fontsize=16)
     plt.tight_layout(rect=[0, 0.03, 1, 0.95])
     outpath = os.path.join(output_dir, filename)
     plt.savefig(outpath, bbox_inches="tight", dpi=150)
