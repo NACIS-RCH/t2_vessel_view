@@ -10,6 +10,13 @@ setup(
     name="t2vesselview",
     version="0.1.0",
     packages=find_packages(),
+    include_package_data=True,
+    package_data={
+        "t2vesselviewcode": [
+            "assets/templates/adult/*.nii.gz",
+            "assets/templates/pediatric/*.nii.gz",
+        ]
+    },
     install_requires=[
         "numpy>=1.19.2",
         "nibabel>=3.2.1",
