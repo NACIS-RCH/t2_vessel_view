@@ -152,44 +152,98 @@ def main():
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
-        volume_rendering.render_volume_and_save_pngs_pyvista(
+        # volume_rendering.render_volume_and_save_pngs_pyvista(
+        #     t1_eroded_files,
+        #     dir_structure.renders_t1_dir
+        # )
+        volume_rendering.render_volume_and_save_pngs_mricrogl(
             t1_eroded_files,
-            dir_structure.renders_t1_dir
+            dir_structure.renders_t1_dir,
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            window=(0,1000),
+            image_size=(1200,1200),
+            mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+            template_filename="mricrogl_T1_screenshot_test.py"
         )
     # T2 Sagittal
     t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
     if t2_sag_eroded_files:
-        volume_rendering.render_volume_and_save_pngs_pyvista(
+        # volume_rendering.render_volume_and_save_pngs_pyvista(
+        #     t2_sag_eroded_files,
+        #     os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders')
+        # )
+        volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_sag_eroded_files,
-            os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders')
+            os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders'),
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            window=(0,1000),
+            image_size=(1200,1200),
+            mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+            template_filename="mricrogl_T1_screenshot_test.py"
         )
     # T2 Coronal
     t2_cor_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz'))
     if t2_cor_eroded_files:
-        volume_rendering.render_volume_and_save_pngs_pyvista(
+        # volume_rendering.render_volume_and_save_pngs_pyvista(
+        #     t2_cor_eroded_files,
+        #     os.path.join(dir_structure.renders_t2_dir, 'T2_Cor_3D_renders')
+        # )
+        volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_cor_eroded_files,
-            os.path.join(dir_structure.renders_t2_dir, 'T2_Cor_3D_renders')
+            os.path.join(dir_structure.renders_t2_dir, 'T2_Cor_3D_renders'),
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            window=(0,1000),
+            image_size=(1200,1200),
+            mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+            template_filename="mricrogl_T1_screenshot_test.py"
         )
     # T2 Transverse
     t2_tra_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz'))
     if t2_tra_eroded_files:
-        volume_rendering.render_volume_and_save_pngs_pyvista(
+        # volume_rendering.render_volume_and_save_pngs_pyvista(
+        #     t2_tra_eroded_files,
+        #     os.path.join(dir_structure.renders_t2_dir, 'T2_Tra_3D_renders')
+        # )
+        volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_tra_eroded_files,
-            os.path.join(dir_structure.renders_t2_dir, 'T2_Tra_3D_renders')
+            os.path.join(dir_structure.renders_t2_dir, 'T2_Tra_3D_renders'),
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            window=(0,1000),
+            image_size=(1200,1200),
+            mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+            template_filename="mricrogl_T1_screenshot_test.py"
         )
     # T2 3D
     t2_3d_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz'))
     if t2_3d_eroded_files:
-        volume_rendering.render_volume_and_save_pngs_pyvista(
+        # volume_rendering.render_volume_and_save_pngs_pyvista(
+        #     t2_3d_eroded_files,
+        #     os.path.join(dir_structure.renders_t2_dir, 'T2_3D_3D_renders')
+        # )
+        volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_3d_eroded_files,
-            os.path.join(dir_structure.renders_t2_dir, 'T2_3D_3D_renders')
+            os.path.join(dir_structure.renders_t2_dir, 'T2_3D_3D_renders'),
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            window=(0,1000),
+            image_size=(1200,1200),
+            mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+            template_filename="mricrogl_T1_screenshot_test.py"
         )
     # FLAIR
     flair_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz'))
     if flair_eroded_files:
-        volume_rendering.render_volume_and_save_pngs_pyvista(
+        # volume_rendering.render_volume_and_save_pngs_pyvista(
+        #     flair_eroded_files,
+        #     os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders')
+        # )
+        volume_rendering.render_volume_and_save_pngs_mricrogl(
             flair_eroded_files,
-            os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders')
+            os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders'),
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            window=(0,1000),
+            image_size=(1200,1200),
+            mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+            template_filename="mricrogl_T1_screenshot_test.py"
         )
 
     return 0
