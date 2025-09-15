@@ -257,6 +257,18 @@ def main():
             template_filename="mricrogl_T1_screenshot_test.py"
         )
 
+    # --- Multimodal by-angle preset (one combined PPTX) ---
+    try:
+        png_postprocess.run_preset_multimodal_by_angle_per_depth(
+            angles=['superior','inferior','left','right','anterior','posterior'],
+            add_orientation_labels=True,
+            background_rgb=[0,0,0],
+            threshold=2,
+            pptx_name="Multimodal_overview"
+        )
+    except Exception as e:
+        print(f"[WARNING] PNG post-processing (multimodal by angle) skipped: {e}")
+
     return 0
 
 if __name__ == "__main__":
