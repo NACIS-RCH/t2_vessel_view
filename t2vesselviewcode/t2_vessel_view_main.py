@@ -23,6 +23,7 @@ from . import preprocess
 from . import utils
 from . import masking
 from . import volume_rendering
+from . import png_postprocess
 
 
 def main():
@@ -165,6 +166,16 @@ def main():
             mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
             template_filename="mricrogl_T1_screenshot_test.py"
         )
+        # Post-process: crop, L/R annotate, stitch, and export PPTX for T1 overview
+        try:
+            png_postprocess.run_preset_t1_overview_per_depth(
+                add_orientation_labels=True,
+                background_rgb=[0,0,0],
+                threshold=2,
+                pptx_name="T1_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (T1 overview) skipped: {e}")
     # T2 Sagittal
     t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
     if t2_sag_eroded_files:
