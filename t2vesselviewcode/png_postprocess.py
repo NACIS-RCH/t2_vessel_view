@@ -152,6 +152,54 @@ def annotate_lr_on_png(path_in: str, path_out: str) -> None:
     img.save(path_out)
 
 
+def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
+    """Annotate a PNG with orientation letters based on the viewing angle.
+
+    Rules (as specified):
+    - superior:  L on left,  R on right
+    - inferior:  R on left,  L on right (swap)
+    - anterior:  R on left,  L on right (swap)
+    - posterior: L on left,  R on right
+    - left:      L on left only
+    - right:     R on right only
+    """
+    img = PILImage.open(path_in).convert('RGB')
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+
+    font_size = max(16, int(h * 0.05))
+    try:
+        font = ImageFont.truetype("Arial.ttf", font_size)
+    except Exception:
+        font = ImageFont.load_default()
+
+    margin = max(8, int(w * 0.02))
+    left_pos = (margin, h // 2 - font_size // 2)
+    right_pos = (w - margin - font_size // 2, h // 2 - font_size // 2)
+
+    angle_lower = (angle or '').lower()
+    if angle_lower in ('superior', 'posterior'):
+        # Default: L left, R right
+        _draw_text_with_outline(draw, left_pos, 'L', font=font)
+        _draw_text_with_outline(draw, right_pos, 'R', font=font)
+    elif angle_lower in ('inferior', 'anterior'):
+        # Swap: R left, L right
+        _draw_text_with_outline(draw, left_pos, 'R', font=font)
+        _draw_text_with_outline(draw, right_pos, 'L', font=font)
+    elif angle_lower == 'left':
+        # Only L on left
+        _draw_text_with_outline(draw, left_pos, 'L', font=font)
+    elif angle_lower == 'right':
+        # Only R on right
+        _draw_text_with_outline(draw, right_pos, 'R', font=font)
+    else:
+        # Fallback: default L left, R right
+        _draw_text_with_outline(draw, left_pos, 'L', font=font)
+        _draw_text_with_outline(draw, right_pos, 'R', font=font)
+
+    img.save(path_out)
+
+
 def concat_one_row(n: int, top_lists: List[List[str]], output_location: str) -> None:
     """Concatenate n columns (2–4 images per row) into one wide row per depth."""
     _ensure_dir(output_location)
@@ -206,7 +254,9 @@ def concat_two_rows(n: int, top_lists: List[List[str]], bottom_lists: List[List[
 
 
 def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
-    """Export all concat_*.png in a folder to a PPTX (one slide per image)."""
+    """Export all concat_*.png in a folder to a PPTX (one slide per image).
+    Saves a single copy into the global PowerPoints directory only.
+    """
     prs = Presentation()
     # Use a large 16:9-ish slide with black background to match your previous output
     prs.slide_width = Inches(38)
@@ -235,7 +285,11 @@ def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
         else:
             slide.shapes.add_picture(path, from_left, from_top, height=height_inside)
 
-    prs.save(os.path.join(folder, f"{pptx_basename}.pptx"))
+    # Save a single copy in the global PowerPoints directory
+    _ensure_dir(dir_structure.powerpoints_dir)
+    out_global = os.path.join(dir_structure.powerpoints_dir, f"{pptx_basename}.pptx")
+    prs.save(out_global)
+    print(f"[INFO] Saved PPTX to: {out_global}")
 
 
 def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, background_rgb: List[int] = [0, 0, 0], threshold: int = 2, pptx_name: str = "T1_overview") -> None:
@@ -246,7 +300,9 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
     - Ensure all have the same number of PNGs (one per depth).
     - Crop each folder using the legacy algorithm.
     - Optionally overlay L/R onto each cropped image.
-    - Concatenate columns (one row) per depth to build final panels.
+    - Concatenate into TWO rows per depth:
+      * Top row: left, right
+      * Bottom row: superior, inferior, anterior, posterior
     - Export all panels to a PPTX (one slide per panel).
     """
     angles = ['left', 'right', 'superior', 'inferior', 'anterior', 'posterior']
@@ -269,18 +325,34 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
             ann_paths = []
             for p in cropped:
                 out = os.path.join(annotated_dir, os.path.basename(p))
-                annotate_lr_on_png(p, out)
+                annotate_by_angle_on_png(p, out, adir.split('/')[-1]) # Pass the angle folder name
                 ann_paths.append(out)
             cropped_lists.append(sorted(ann_paths))
         else:
             cropped_lists.append(cropped)
 
-    # Stitch panels into a single row (columns = number of angles)
+    # Map angle -> list for two-row layout
+    angle_to_list = {ang: lst for ang, lst in zip(angles, cropped_lists)}
+
+    # Output directory for stitched panels
     out_panel_dir = os.path.join(dir_structure.renders_t1_dir, 'stitched_overview')
     _ensure_dir(out_panel_dir)
 
+    # Build two-row layout if all required angles present; else fallback to one-row
+    required_top = ['left', 'right']
+    required_bottom = ['superior', 'inferior', 'anterior', 'posterior']
+    have_all = all(a in angle_to_list for a in required_top + required_bottom)
+
     n = len(cropped_lists[0])
-    concat_one_row(n, cropped_lists, out_panel_dir)
+
+    if have_all:
+        top_lists = [angle_to_list['left'], angle_to_list['right']]
+        bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
+        concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
+    else:
+        # Safe fallback if any angle is missing: keep a single-row panel in the original order
+        print("[WARNING] Missing one or more angles for two-row T1 overview; falling back to single-row stitching")
+        concat_one_row(n, cropped_lists, out_panel_dir)
 
     # Export PPTX with one slide per stitched panel
     export_pptx_from_folder(out_panel_dir, pptx_name) 
