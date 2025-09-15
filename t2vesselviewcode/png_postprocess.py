@@ -174,28 +174,41 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
         font = ImageFont.load_default()
 
     margin = max(8, int(w * 0.02))
-    left_pos = (margin, h // 2 - font_size // 2)
-    right_pos = (w - margin - font_size // 2, h // 2 - font_size // 2)
+
+    # Compute vertical target positions:
+    # - top-biased (about 1/3 from top)
+    # - bottom-biased (about 2/3 from top)
+    top_target_y = int(h * 0.33)
+    bottom_target_y = int(h * 0.66)
+
+    # Clamp targets within margins to avoid clipping
+    y_top = max(margin, min(top_target_y, h - margin - font_size))
+    y_bottom = max(margin, min(bottom_target_y, h - margin - font_size))
+
+    # Horizontal anchoring near edges
+    left_x = margin
+    right_x = w - margin - font_size // 2
 
     angle_lower = (angle or '').lower()
+
     if angle_lower in ('superior', 'posterior'):
-        # Default: L left, R right
-        _draw_text_with_outline(draw, left_pos, 'L', font=font)
-        _draw_text_with_outline(draw, right_pos, 'R', font=font)
+        # Default orientation; place labels higher (top-biased)
+        _draw_text_with_outline(draw, (left_x, y_top), 'L', font=font)
+        _draw_text_with_outline(draw, (right_x, y_top), 'R', font=font)
     elif angle_lower in ('inferior', 'anterior'):
-        # Swap: R left, L right
-        _draw_text_with_outline(draw, left_pos, 'R', font=font)
-        _draw_text_with_outline(draw, right_pos, 'L', font=font)
+        # Swap L/R; place labels higher (top-biased)
+        _draw_text_with_outline(draw, (left_x, y_top), 'R', font=font)
+        _draw_text_with_outline(draw, (right_x, y_top), 'L', font=font)
     elif angle_lower == 'left':
-        # Only L on left
-        _draw_text_with_outline(draw, left_pos, 'L', font=font)
+        # Only L on left; place lower (bottom-biased)
+        _draw_text_with_outline(draw, (left_x, y_bottom), 'L', font=font)
     elif angle_lower == 'right':
-        # Only R on right
-        _draw_text_with_outline(draw, right_pos, 'R', font=font)
+        # Only R on right; place lower (bottom-biased)
+        _draw_text_with_outline(draw, (right_x, y_bottom), 'R', font=font)
     else:
-        # Fallback: default L left, R right
-        _draw_text_with_outline(draw, left_pos, 'L', font=font)
-        _draw_text_with_outline(draw, right_pos, 'R', font=font)
+        # Fallback: default L/R at mid-bottom as a safe choice
+        _draw_text_with_outline(draw, (left_x, y_bottom), 'L', font=font)
+        _draw_text_with_outline(draw, (right_x, y_bottom), 'R', font=font)
 
     img.save(path_out)
 
@@ -356,3 +369,130 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
 
     # Export PPTX with one slide per stitched panel
     export_pptx_from_folder(out_panel_dir, pptx_name) 
+
+
+def run_preset_multimodal_by_angle_per_depth(
+    angles: List[str] = ['left','right','superior','inferior','anterior','posterior'],
+    add_orientation_labels: bool = True,
+    background_rgb: List[int] = [0, 0, 0],
+    threshold: int = 2,
+    pptx_name: str = "Multimodal_by_angle"
+) -> None:
+    """Stitch multimodal panels (T1, best T2 plane for angle, FLAIR) per depth into one PPTX.
+
+    For each angle, we assemble a one-row panel with:
+      - T1 by_angle/<angle>
+      - T2 best acquisition for that angle:
+          left/right -> T2_Sag_3D_renders
+          anterior/posterior -> T2_Cor_3D_renders
+          superior/inferior -> T2_Tra_3D_renders
+        (if missing, we attempt T2_3D_3D_renders; if still missing, skip the angle)
+      - FLAIR by_angle/<angle> (optional; skip if missing)
+
+    We crop each input directory with the legacy algorithm, annotate L/R by angle,
+    then stitch top row per depth. Slides are appended to a single PPTX in PowerPoints.
+    """
+    # Resolve base dirs
+    t1_base = dir_structure.renders_t1_dir
+    t2_base = dir_structure.renders_t2_dir
+    flair_base = os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders')
+
+    # Map angle -> best T2 plane folder name
+    angle_to_t2_plane = {
+        'left': 'T2_Sag_3D_renders',
+        'right': 'T2_Sag_3D_renders',
+        'anterior': 'T2_Cor_3D_renders',
+        'posterior': 'T2_Cor_3D_renders',
+        'superior': 'T2_Tra_3D_renders',
+        'inferior': 'T2_Tra_3D_renders',
+    }
+
+    # Create a temporary folder to collect panels per angle then export
+    panels_root = os.path.join(dir_structure.renders_dir, 'stitched_multimodal_by_angle')
+    _ensure_dir(panels_root)
+
+    # Collect all panel folders generated to feed PPTX
+    per_angle_panel_folders = []
+
+    for angle in angles:
+        angle_dir_name = angle.lower()
+        # Build input directories for this angle
+        t1_dir = os.path.join(t1_base, 'by_angle', angle_dir_name)
+        t2_plane = angle_to_t2_plane.get(angle_dir_name)
+        t2_dir = os.path.join(t2_base, t2_plane, 'by_angle', angle_dir_name) if t2_plane else None
+        flair_dir = os.path.join(flair_base, 'by_angle', angle_dir_name)
+
+        # Fallback to T2_3D if plane-specific is missing
+        if not (t2_dir and os.path.isdir(t2_dir) and _list_pngs(t2_dir)):
+            t2_dir_alt = os.path.join(t2_base, 'T2_3D_3D_renders', 'by_angle', angle_dir_name)
+            if os.path.isdir(t2_dir_alt) and _list_pngs(t2_dir_alt):
+                t2_dir = t2_dir_alt
+
+        # Check existence and PNG lists
+        candidates = [(t1_dir, 't1'), (t2_dir, 't2'), (flair_dir, 'flair')]
+        valid_dirs = []
+        for d, label in candidates:
+            if d and os.path.isdir(d):
+                pngs = _list_pngs(d)
+                if pngs:
+                    valid_dirs.append((d, pngs))
+
+        # Need at least T1 and one other to build a useful multimodal panel
+        if len(valid_dirs) < 2:
+            print(f"[WARNING] Skipping angle '{angle}': insufficient inputs")
+            continue
+
+        # Enforce equal file counts across selected dirs
+        counts = [len(pngs) for _, pngs in valid_dirs]
+        if any(c != counts[0] for c in counts):
+            print(f"[WARNING] Skipping angle '{angle}': unequal PNG counts across inputs")
+            continue
+
+        # Crop and annotate per directory
+        cropped_lists = []
+        for d, pngs in valid_dirs:
+            dims = get_crop_dimensions(pngs, background_rgb, threshold)
+            cropped = crop_image_series(pngs, d, dims)
+            if add_orientation_labels:
+                annotated_dir = os.path.join(d, '1_cropped_annotated')
+                _ensure_dir(annotated_dir)
+                ann_paths = []
+                for p in cropped:
+                    out = os.path.join(annotated_dir, os.path.basename(p))
+                    annotate_by_angle_on_png(p, out, angle)
+                    ann_paths.append(out)
+                cropped_lists.append(sorted(ann_paths))
+            else:
+                cropped_lists.append(cropped)
+
+        # Stitch a single-row panel for this angle
+        out_panel_dir = os.path.join(panels_root, angle_dir_name)
+        _ensure_dir(out_panel_dir)
+        n = len(cropped_lists[0])
+        concat_one_row(n, cropped_lists, out_panel_dir)
+        per_angle_panel_folders.append(out_panel_dir)
+
+    # Build one combined PPTX: append all angles' panels ordered by angles list
+    # Create a temp folder to collect copies in desired order
+    combined_folder = os.path.join(panels_root, '_combined_for_pptx')
+    _ensure_dir(combined_folder)
+
+    slide_idx = 0
+    for angle in angles:
+        angle_dir_name = angle.lower()
+        pdir = os.path.join(panels_root, angle_dir_name)
+        if not os.path.isdir(pdir):
+            continue
+        panel_paths = sorted(glob.glob(os.path.join(pdir, 'concat_*.png')))
+        for p in panel_paths:
+            # Copy into combined folder with sequential names to preserve order
+            dst = os.path.join(combined_folder, f'concat_{slide_idx:03}.png')
+            try:
+                from shutil import copyfile
+                copyfile(p, dst)
+                slide_idx += 1
+            except Exception:
+                pass
+
+    # Export single PPTX with all angles
+    export_pptx_from_folder(combined_folder, pptx_basename=pptx_name) 
