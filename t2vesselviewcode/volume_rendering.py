@@ -18,6 +18,42 @@ def _ensure_ras(img):
             raise ValueError(f"Non-RAS after canonicalization: pre={ax}, post={ax2}")
     return img
 
+def _set_mricrogl_label_orient_off():
+    """Attempt to set LabelOrient=0 in MRIcroGL.ini on macOS to hide orientation labels/cube.
+
+    This edits '~/Library/Application Support/MRIcroGL/MRIcroGL.ini' if it exists,
+    creating a backup alongside it as '.bak'. Safe no-op if path not found.
+    """
+    ini_path = os.path.expanduser('~/Library/Application Support/MRIcroGL/MRIcroGL.ini')
+    try:
+        if not os.path.exists(ini_path):
+            return
+        # Backup
+        try:
+            shutil.copyfile(ini_path, ini_path + '.bak')
+        except Exception:
+            pass
+        with open(ini_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+        found = False
+        new_lines = []
+        for line in lines:
+            if line.strip().startswith('LabelOrient='):
+                new_lines.append('LabelOrient=0\n')
+                found = True
+            else:
+                new_lines.append(line)
+        if not found:
+            # Append setting at end
+            if new_lines and not new_lines[-1].endswith('\n'):
+                new_lines[-1] = new_lines[-1] + '\n'
+            new_lines.append('LabelOrient=0\n')
+        with open(ini_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+    except Exception:
+        # Silent failure; prefer not to block rendering
+        pass
+
 def render_volume_and_save_pngs_mricrogl(
     nifti_paths,
     output_dir,
@@ -113,10 +149,20 @@ def render_volume_and_save_pngs_mricrogl(
             f.write(script_text)
 
         # Run MRIcroGL
+        _set_mricrogl_label_orient_off()
         cmd = [mricrogl_path, '-s', tmp_script]
-        proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        if proc.returncode != 0:
-            raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
+            if proc.returncode != 0:
+                raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
+        except subprocess.TimeoutExpired as e:
+            # Attempt to terminate gracefully, then continue
+            try:
+                # On macOS, run killall as a last resort (may affect other instances)
+                subprocess.run(['pkill', '-f', mricrogl_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+            print(f"[WARNING] MRIcroGL timed out after 120s. Proceeding. Partial renders may have been saved.\n{e}")
 
         print(f"[INFO] MRIcroGL renders saved under: {output_dir}")
     finally:
