@@ -54,6 +54,64 @@ def _set_mricrogl_label_orient_off():
         # Silent failure; prefer not to block rendering
         pass
 
+def compute_series_window(
+    nifti_paths,
+    low_pct: float = 10.0,
+    high_pct: float = 90.0,
+    ignore_zeros: bool = True,
+    max_samples: int = 2000000
+):
+    """Compute a robust intensity window from a list of NIfTI files.
+
+    Strategy (fast and stable for MVP):
+    - Use up to the first 3 volumes in the series.
+    - For each, sample up to `max_samples` voxels to compute per-image percentiles.
+    - Optionally ignore zeros (masked background) for percentiles.
+    - Return the median of the per-image low/high percentiles (10th/90th by default), cast to int.
+
+    Falls back to (0, 1000) if any error occurs.
+    """
+    try:
+        # If nothing to analyze, fall back to a sensible default window
+        if not nifti_paths:
+            return (0, 1000)
+        per_lows = []  # collect per-image lower percentile
+        per_highs = []  # collect per-image upper percentile
+        # Analyze at most the first three images for speed and stability
+        for p in nifti_paths[:3]:
+            img = nib.load(p)  # load image header + data
+            data = img.get_fdata(dtype=np.float32)  # get data as float32 for uniformity
+            flat = data.ravel()  # flatten to 1D for simple percentile computation
+            if ignore_zeros:
+                flat = flat[flat != 0]  # drop masked background voxels
+            if flat.size == 0:
+                continue  # skip images with no foreground
+            if flat.size > max_samples:
+                # Subsample without replacement to bound time/memory for huge volumes
+                idx = np.random.choice(flat.size, size=max_samples, replace=False)
+                flat = flat[idx]
+            # Compute requested low/high percentiles for this image
+            per_lows.append(np.percentile(flat, low_pct))
+            per_highs.append(np.percentile(flat, high_pct))
+        # If nothing usable was gathered, return default
+        if not per_lows or not per_highs:
+            return (0, 1000)
+        # Aggregate by median to reduce sensitivity to outliers across images
+        low = float(np.median(per_lows))
+        high = float(np.median(per_highs))
+        # Validate numbers are sane and ordered
+        if not np.isfinite(low) or not np.isfinite(high) or high <= low:
+            return (0, 1000)
+        # Pad window by 5% of span to avoid clipping subtle structures
+        span = high - low
+        low_adj = max(0.0, low - 0.05 * span)  # avoid negative lower bound
+        high_adj = high + 0.05 * span
+        # Return integer bounds expected by MRIcroGL scripting
+        return (int(low_adj), int(high_adj))
+    except Exception:
+        # On any error, fall back to default window to keep pipeline moving
+        return (0, 1000)
+
 def render_volume_and_save_pngs_mricrogl(
     nifti_paths,
     output_dir,

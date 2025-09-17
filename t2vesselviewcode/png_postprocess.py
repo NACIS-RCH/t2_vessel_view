@@ -46,13 +46,15 @@ def _list_pngs(directory: str) -> List[str]:
     return sorted(glob.glob(os.path.join(directory, '*.png')))
 
 
-def get_crop_dimensions(images: List[str], background_colour: List[int], threshold: int = 2) -> Tuple[int, int, int, int]:
+def get_crop_dimensions(images: List[str], background_colour: List[int], threshold: int = 2, padding_px: int = 6) -> Tuple[int, int, int, int]:
     """Compute a single crop box for an image series using least background across all.
 
     Uses pyvips.find_trim(threshold, background) like the legacy script:
     - Chooses the first image with non-zero brain width as the sample.
     - Measures left/top/width/height on the sample, converts to right/bottom margins.
     - Iterates all images, always keeping the most conservative crop (least margins).
+    - Finally, expands the crop by a small padding (in pixels) to retain a thin
+      rim of background so stitched images do not touch and labels have space.
 
     Returns: (left, top, width, height) suitable for pyvips.crop.
     """
@@ -95,7 +97,15 @@ def get_crop_dimensions(images: List[str], background_colour: List[int], thresho
     # Convert margins back to final crop width/height
     width_crop = sample.width - left_crop - right_margin
     height_crop = sample.height - top_crop - bottom_margin
-    return left_crop, top_crop, width_crop, height_crop
+
+    # Expand the crop rectangle by padding while clamping to image bounds
+    pad = max(0, int(padding_px))
+    left_expanded = max(0, left_crop - pad)
+    top_expanded = max(0, top_crop - pad)
+    width_expanded = min(sample.width - left_expanded, width_crop + pad * 2)
+    height_expanded = min(sample.height - top_expanded, height_crop + pad * 2)
+
+    return left_expanded, top_expanded, width_expanded, height_expanded
 
 
 def crop_image_series(images: List[str], output_directory: str, dimensions: Tuple[int, int, int, int]) -> List[str]:
@@ -126,6 +136,38 @@ def _draw_text_with_outline(draw: ImageDraw.Draw, xy: Tuple[int, int], text: str
     for dx, dy in [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (1, 1), (-1, 1), (1, -1)]:
         draw.text((x + dx, y + dy), text, font=font, fill=outline)
     draw.text((x, y), text, font=font, fill=fill)
+
+
+def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: str) -> None:
+    """Annotate a PNG with a modality label centered at the bottom edge.
+
+    - Uses a relative font size (~4.5% of height, min 14 px).
+    - Centers text horizontally and places it just above the bottom margin.
+    - Draws with an outline for visibility on dark/light backgrounds.
+    """
+    img = PILImage.open(path_in).convert('RGB')
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+
+    font_size = max(14, int(h * 0.045))
+    try:
+        font = ImageFont.truetype("Arial.ttf", font_size)
+    except Exception:
+        font = ImageFont.load_default()
+
+    # Measure text to center precisely
+    try:
+        bbox = draw.textbbox((0, 0), modality_text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+    except Exception:
+        text_w, text_h = draw.textsize(modality_text, font=font)
+
+    margin = max(8, int(h * 0.02))
+    x = max(0, (w - text_w) // 2)
+    y = max(0, h - margin - text_h)
+    _draw_text_with_outline(draw, (x, y), modality_text, font=font)
+    img.save(path_out)
 
 
 def annotate_lr_on_png(path_in: str, path_out: str) -> None:
@@ -327,22 +369,30 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
         print("[WARNING] T1 overview preset skipped: angle folders missing or file counts unequal")
         return
 
-    # Crop per angle folder and optionally annotate L/R, preserving order per depth
+    # Crop per angle folder and annotate overlays, preserving order per depth
     cropped_lists = []
     for paths, adir in zip(dir_pngs, angle_dirs):
         dims = get_crop_dimensions(paths, background_rgb, threshold)
         cropped = crop_image_series(paths, adir, dims)
-        if add_orientation_labels:
-            annotated_dir = os.path.join(adir, '1_cropped_annotated')
-            _ensure_dir(annotated_dir)
-            ann_paths = []
-            for p in cropped:
-                out = os.path.join(annotated_dir, os.path.basename(p))
-                annotate_by_angle_on_png(p, out, adir.split('/')[-1]) # Pass the angle folder name
-                ann_paths.append(out)
-            cropped_lists.append(sorted(ann_paths))
-        else:
-            cropped_lists.append(cropped)
+        annotated_dir = os.path.join(adir, '1_cropped_annotated')
+        _ensure_dir(annotated_dir)
+        ann_paths = []
+        for p in cropped:
+            out = os.path.join(annotated_dir, os.path.basename(p))
+            if add_orientation_labels:
+                # First add angle-based L/R annotations
+                annotate_by_angle_on_png(p, out, adir.split('/')[-1])
+            else:
+                # Copy cropped into annotated_dir if not adding L/R
+                try:
+                    from shutil import copyfile
+                    copyfile(p, out)
+                except Exception:
+                    continue
+            # Always add modality label for T1
+            annotate_modality_center_bottom(out, out, 'T1')
+            ann_paths.append(out)
+        cropped_lists.append(sorted(ann_paths))
 
     # Map angle -> list for two-row layout
     angle_to_list = {ang: lst for ang, lst in zip(angles, cropped_lists)}
@@ -453,17 +503,29 @@ def run_preset_multimodal_by_angle_per_depth(
         for d, pngs in valid_dirs:
             dims = get_crop_dimensions(pngs, background_rgb, threshold)
             cropped = crop_image_series(pngs, d, dims)
-            if add_orientation_labels:
-                annotated_dir = os.path.join(d, '1_cropped_annotated')
-                _ensure_dir(annotated_dir)
-                ann_paths = []
-                for p in cropped:
-                    out = os.path.join(annotated_dir, os.path.basename(p))
+            annotated_dir = os.path.join(d, '1_cropped_annotated')
+            _ensure_dir(annotated_dir)
+            ann_paths = []
+            for p in cropped:
+                out = os.path.join(annotated_dir, os.path.basename(p))
+                if add_orientation_labels:
                     annotate_by_angle_on_png(p, out, angle)
-                    ann_paths.append(out)
-                cropped_lists.append(sorted(ann_paths))
-            else:
-                cropped_lists.append(cropped)
+                else:
+                    try:
+                        from shutil import copyfile
+                        copyfile(p, out)
+                    except Exception:
+                        continue
+                # Determine modality text by directory identity
+                if d == t1_dir:
+                    modality_text = 'T1'
+                elif d == flair_dir:
+                    modality_text = 'FLAIR'
+                else:
+                    modality_text = 'T2 (inv)'
+                annotate_modality_center_bottom(out, out, modality_text)
+                ann_paths.append(out)
+            cropped_lists.append(sorted(ann_paths))
 
         # Stitch a single-row panel for this angle
         out_panel_dir = os.path.join(panels_root, angle_dir_name)
