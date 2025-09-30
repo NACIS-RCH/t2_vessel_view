@@ -5,6 +5,8 @@ import os
 import tempfile
 import shutil
 import subprocess
+import re
+import glob
 
 from . import dir_structure
 
@@ -53,6 +55,236 @@ def _set_mricrogl_label_orient_off():
     except Exception:
         # Silent failure; prefer not to block rendering
         pass
+
+def _configure_mricrogl_ini_preferences():
+    """Update MRIcroGL.ini for reproducible screenshots on macOS.
+
+    - Disable orientation cube/labels: LabelOrient=0
+    - Disable Retina upscaling: RetinaDisplay=0
+    - Ensure no bitmap tiling upscaling: BitmapZoom=1
+    - Clear previous file references: PrevFilename1..10= and PrevBackgroundImage=
+
+    Safe no-op if the INI file is not found. Creates a .bak backup when possible.
+    """
+    ini_path = os.path.expanduser('~/Library/Application Support/MRIcroGL/MRIcroGL.ini')
+    try:
+        if not os.path.exists(ini_path):
+            return
+        # Backup existing INI
+        try:
+            shutil.copyfile(ini_path, ini_path + '.bak')
+        except Exception:
+            pass
+
+        with open(ini_path, 'r', encoding='utf-8', errors='ignore') as f:
+            lines = f.readlines()
+
+        keys_to_set = {
+            'LabelOrient': '0',
+            'RetinaDisplay': '0',
+            'BitmapZoom': '1',
+            'PrevBackgroundImage': ''
+        }
+        # Add PrevFilename1..10
+        for i in range(1, 11):
+            keys_to_set[f'PrevFilename{i}'] = ''
+
+        found_keys = {k: False for k in keys_to_set}
+        new_lines = []
+        for line in lines:
+            stripped = line.strip()
+            replaced = False
+            for k, v in keys_to_set.items():
+                if stripped.startswith(f'{k}='):
+                    new_lines.append(f'{k}={v}\n')
+                    found_keys[k] = True
+                    replaced = True
+                    break
+            if not replaced:
+                new_lines.append(line)
+
+        # Append any missing keys
+        if new_lines and not new_lines[-1].endswith('\n'):
+            new_lines[-1] = new_lines[-1] + '\n'
+        for k, v in keys_to_set.items():
+            if not found_keys[k]:
+                new_lines.append(f'{k}={v}\n')
+
+        with open(ini_path, 'w', encoding='utf-8') as f:
+            f.writelines(new_lines)
+    except Exception:
+        # Non-fatal; continue without blocking rendering
+        pass
+
+# Tuned camera distance (persists across calls within this run only)
+_TUNED_CAMERA_DISTANCE = None
+
+def _select_least_eroded_file(nifti_paths):
+    """Pick the least-eroded file: the one whose basename starts with the smallest number.
+
+    Falls back to the first path if no numeric prefix is found.
+    """
+    def key_fn(p):
+        b = os.path.basename(p)
+        m = re.match(r"^(\d+)_", b)
+        return int(m.group(1)) if m else 9999999
+    try:
+        return sorted(nifti_paths, key=key_fn)[0]
+    except Exception:
+        return nifti_paths[0]
+
+def _collect_trial_pngs(root):
+    """Collect all PNGs in by_angle subfolders from a trial render root."""
+    return sorted(glob.glob(os.path.join(root, 'by_angle', '*', '*.png')))
+
+def _measure_edges_with_vips(png_path, threshold=2, background=[0, 0, 0]):
+    """Return edge margins in pixels and fractions using pyvips.find_trim.
+
+    Returns: (left_px, right_px, top_px, bottom_px, left_frac, right_frac, top_frac, bottom_frac)
+    """
+    import pyvips
+    img = pyvips.Image.new_from_file(png_path)
+    left, top, bw, bh = img.find_trim(threshold=threshold, background=background)
+    right = img.width - left - bw
+    bottom = img.height - top - bh
+    lw = img.width if img.width else 1
+    lh = img.height if img.height else 1
+    return (
+        left, right, top, bottom,
+        left / lw, right / lw, top / lh, bottom / lh
+    )
+
+def _evaluate_camera_distance_once(nifti_path, angles, image_size, mricrogl_path, template_filename, camera_distance):
+    """Render a trial at the given camera distance and evaluate conditions.
+
+    Returns: (too_close, too_far)
+    - too_close: any edge == 0 px for any angle image
+    - too_far: every edge on every image has > 20% background fraction
+    """
+    # Use a temp output dir so we don't pollute real outputs
+    trial_dir = tempfile.mkdtemp(prefix='t2vv_cam_trial_')
+    try:
+        # Compute a window from the single image for reasonable contrast
+        window = compute_series_window([nifti_path])
+        # Reuse main renderer to produce PNGs for all angles
+        render_volume_and_save_pngs_mricrogl(
+            [nifti_path], trial_dir, angles=angles, window=window,
+            image_size=image_size, mricrogl_path=mricrogl_path,
+            template_filename=template_filename, camera_distance=camera_distance
+        )
+        pngs = _collect_trial_pngs(trial_dir)
+        if not pngs:
+            # If nothing rendered, treat as too_close to nudge outward safely
+            return True, False
+
+        # Evaluate margins across all PNGs
+        any_zero_edge = False
+        all_edges_gt_20 = True
+        for p in pngs:
+            l, r, t, b, lf, rf, tf, bf = _measure_edges_with_vips(p)
+            if l == 0 or r == 0 or t == 0 or b == 0:
+                any_zero_edge = True
+            if not (lf > 0.20 and rf > 0.20 and tf > 0.20 and bf > 0.20):
+                all_edges_gt_20 = False
+        return any_zero_edge, all_edges_gt_20
+    finally:
+        try:
+            shutil.rmtree(trial_dir)
+        except Exception:
+            pass
+
+def tune_camera_distance(nifti_paths, angles, image_size, mricrogl_path, template_filename, start=0.6, dmin=0.2, dmax=1.8):
+    """Find a suitable camera distance using bracketing + binary search.
+
+    Criteria:
+    - too_close(d): any image has any edge with 0 background pixels
+    - too_far(d): all images have all four edges > 20% background fraction
+
+    Returns the smallest acceptable distance that avoids cropping (prefers larger brain).
+    Caches the result for the module lifetime.
+    """
+    global _TUNED_CAMERA_DISTANCE
+    if _TUNED_CAMERA_DISTANCE is not None:
+        return _TUNED_CAMERA_DISTANCE
+
+    if not nifti_paths:
+        _TUNED_CAMERA_DISTANCE = start
+        return _TUNED_CAMERA_DISTANCE
+
+    test_img = _select_least_eroded_file(nifti_paths)
+
+    # Evaluate at start
+    s = max(dmin, min(dmax, float(start)))
+    tc, tf = _evaluate_camera_distance_once(test_img, angles, image_size, mricrogl_path, template_filename, s)
+    if not tc and not tf:
+        _TUNED_CAMERA_DISTANCE = s
+        return _TUNED_CAMERA_DISTANCE
+
+    lo = None  # last too_close distance
+    hi = None  # first not too_close (or compact) distance
+
+    d = s
+    if tc:
+        # Grow multiplicatively until not too_close or reach max
+        while True:
+            lo = d
+            nd = min(dmax, d * 1.5)
+            if nd == d:
+                break
+            d = nd
+            tc2, tf2 = _evaluate_camera_distance_once(test_img, angles, image_size, mricrogl_path, template_filename, d)
+            if not tc2:
+                hi = d
+                tf = tf2
+                break
+        if hi is None:
+            # Even at max still too close; accept max to avoid crop as much as possible
+            _TUNED_CAMERA_DISTANCE = dmax
+            return _TUNED_CAMERA_DISTANCE
+    else:
+        # too_far at start: shrink until not too_far
+        while True:
+            nd = max(dmin, d / 1.5)
+            if nd == d:
+                break
+            d = nd
+            tc2, tf2 = _evaluate_camera_distance_once(test_img, angles, image_size, mricrogl_path, template_filename, d)
+            if not tf2:
+                hi = d
+                tc = tc2
+                break
+            # Optionally record lo if we hit too_close while shrinking
+            if tc2:
+                lo = d
+                break
+        if hi is None:
+            # Could not find a non-too-far spot; keep start
+            _TUNED_CAMERA_DISTANCE = s
+            return _TUNED_CAMERA_DISTANCE
+
+    # If we have lo (too_close) and hi (not too_close), run binary to ~0.1 precision
+    if lo is not None and hi is not None:
+        best = None
+        while (hi - lo) > 0.1:
+            mid = (lo + hi) / 2.0
+            tc_m, tf_m = _evaluate_camera_distance_once(test_img, angles, image_size, mricrogl_path, template_filename, mid)
+            if tc_m:
+                lo = mid
+            elif tf_m:
+                hi = mid
+            else:
+                best = mid
+                # Bias toward closest acceptable distance
+                hi = mid
+        _TUNED_CAMERA_DISTANCE = (best if best is not None else hi)
+        return _TUNED_CAMERA_DISTANCE
+
+    # Fallbacks when only one side was found
+    if hi is not None:
+        _TUNED_CAMERA_DISTANCE = hi
+        return _TUNED_CAMERA_DISTANCE
+    _TUNED_CAMERA_DISTANCE = s
+    return _TUNED_CAMERA_DISTANCE
 
 def compute_series_window(
     nifti_paths,
@@ -166,6 +398,19 @@ def render_volume_and_save_pngs_mricrogl(
     if not os.path.exists(template_path):
         raise FileNotFoundError(f"MRIcroGL template not found: {template_path}")
 
+    # Auto-tune camera distance if requested
+    if isinstance(camera_distance, str) and camera_distance.strip().lower() == 'auto':
+        camera_distance = tune_camera_distance(
+            nifti_paths=nifti_paths,
+            angles=angles,
+            image_size=image_size,
+            mricrogl_path=mricrogl_path,
+            template_filename=template_filename,
+            start=0.6,
+            dmin=0.2,
+            dmax=1.8
+        )
+
     # Create a temp workspace
     tmp_root = tempfile.mkdtemp(prefix='t2vv_mricrogl_')
     tmp_imgs = []
@@ -206,8 +451,8 @@ def render_volume_and_save_pngs_mricrogl(
         with open(tmp_script, 'w') as f:
             f.write(script_text)
 
-        # Run MRIcroGL
-        _set_mricrogl_label_orient_off()
+        # Run MRIcroGL (ensure INI prefs are set for deterministic screenshots)
+        _configure_mricrogl_ini_preferences()
         cmd = [mricrogl_path, '-s', tmp_script]
         try:
             proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
