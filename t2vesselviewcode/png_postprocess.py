@@ -319,7 +319,7 @@ def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
     from_left = Inches(0.3)
     from_top = Inches(0.3)
     width_inside = Inches(38 - 0.6)
-    height_inside = Inches(38 - 0.6)
+    height_inside = Inches(22 - 0.6)
 
     images = sorted(glob.glob(os.path.join(folder, 'concat_*.png')))
     for path in images:
