@@ -168,7 +168,8 @@ def main():
             window=t1_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py"
+            template_filename="mricrogl_T1_screenshot_test.py",
+            camera_distance='auto'
         )
         # Post-process: crop, L/R annotate, stitch, and export PPTX for T1 overview
         try:
@@ -195,7 +196,8 @@ def main():
             window=t2_sag_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py"
+            template_filename="mricrogl_T1_screenshot_test.py",
+            camera_distance='auto'
         )
     # T2 Coronal
     t2_cor_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz'))
@@ -212,7 +214,8 @@ def main():
             window=t2_cor_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py"
+            template_filename="mricrogl_T1_screenshot_test.py",
+            camera_distance='auto'
         )
     # T2 Transverse
     t2_tra_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz'))
@@ -229,7 +232,8 @@ def main():
             window=t2_tra_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py"
+            template_filename="mricrogl_T1_screenshot_test.py",
+            camera_distance='auto'
         )
     # T2 3D
     t2_3d_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz'))
@@ -246,7 +250,8 @@ def main():
             window=t2_3d_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py"
+            template_filename="mricrogl_T1_screenshot_test.py",
+            camera_distance='auto'
         )
     # FLAIR
     flair_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz'))
@@ -263,7 +268,8 @@ def main():
             window=flair_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py"
+            template_filename="mricrogl_T1_screenshot_test.py",
+            camera_distance='auto'
         )
 
     # --- Multimodal by-angle preset (one combined PPTX) ---
