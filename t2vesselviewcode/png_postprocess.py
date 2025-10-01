@@ -655,3 +655,105 @@ def run_preset_t2_overview_per_depth(
         concat_one_row(n, cropped_lists, out_panel_dir)
 
     export_pptx_from_folder(out_panel_dir, pptx_name)
+
+
+def run_preset_multimodal_other_angles_per_depth(
+    angles: List[str] = ['surg_left_lat','surg_right_lat','surg_left_ato','surg_right_ato'],
+    add_orientation_labels: bool = True,
+    background_rgb: List[int] = [0, 0, 0],
+    threshold: int = 2,
+    pptx_name: str = "multimodal_overview_other_angles"
+) -> None:
+    """Stitch multimodal panels (T1, best T2 plane, FLAIR) at specified surgical views.
+
+    T2 plane choice (initial): sagittal for all four views.
+    Fallbacks mirror the main multimodal preset: if sagittal missing, try T2_3D.
+    """
+    t1_base = dir_structure.renders_t1_dir
+    t2_base = dir_structure.renders_t2_dir
+    flair_base = os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders')
+
+    panels_root = os.path.join(dir_structure.renders_dir, 'stitched_multimodal_other_angles')
+    _ensure_dir(panels_root)
+
+    per_angle_panel_folders = []
+    for angle in angles:
+        angle_dir = angle.lower()
+        t1_dir = os.path.join(t1_base, 'by_angle', angle_dir)
+        # Prefer sagittal T2 for these views
+        t2_dir = os.path.join(t2_base, 'T2_Sag_3D_renders', 'by_angle', angle_dir)
+        if not (os.path.isdir(t2_dir) and _list_pngs(t2_dir)):
+            t2_alt = os.path.join(t2_base, 'T2_3D_3D_renders', 'by_angle', angle_dir)
+            if os.path.isdir(t2_alt) and _list_pngs(t2_alt):
+                t2_dir = t2_alt
+        flair_dir = os.path.join(flair_base, 'by_angle', angle_dir)
+
+        candidates = [(t1_dir, 't1'), (t2_dir, 't2'), (flair_dir, 'flair')]
+        valid_dirs = []
+        for d, label in candidates:
+            if d and os.path.isdir(d):
+                pngs = _list_pngs(d)
+                if pngs:
+                    valid_dirs.append((d, pngs))
+        if len(valid_dirs) < 2:
+            print(f"[WARNING] Skipping angle '{angle}': insufficient inputs")
+            continue
+
+        counts = [len(pngs) for _, pngs in valid_dirs]
+        if any(c != counts[0] for c in counts):
+            print(f"[WARNING] Skipping angle '{angle}': unequal PNG counts across inputs")
+            continue
+
+        cropped_lists = []
+        for d, pngs in valid_dirs:
+            dims = get_crop_dimensions(pngs, background_rgb, threshold)
+            cropped = crop_image_series(pngs, d, dims)
+            annotated_dir = os.path.join(d, '1_cropped_annotated')
+            _ensure_dir(annotated_dir)
+            ann_paths = []
+            for p in cropped:
+                out = os.path.join(annotated_dir, os.path.basename(p))
+                if add_orientation_labels:
+                    annotate_by_angle_on_png(p, out, angle)
+                else:
+                    try:
+                        from shutil import copyfile
+                        copyfile(p, out)
+                    except Exception:
+                        continue
+                if d == t1_dir:
+                    modality_text = 'T1'
+                elif d == flair_dir:
+                    modality_text = 'FLAIR'
+                else:
+                    modality_text = 'T2 (inv)'
+                annotate_modality_center_bottom(out, out, modality_text)
+                ann_paths.append(out)
+            cropped_lists.append(sorted(ann_paths))
+
+        out_panel_dir = os.path.join(panels_root, angle_dir)
+        _ensure_dir(out_panel_dir)
+        n = len(cropped_lists[0])
+        concat_one_row(n, cropped_lists, out_panel_dir)
+        per_angle_panel_folders.append(out_panel_dir)
+
+    # Combine to a single PPTX in requested order
+    combined_folder = os.path.join(panels_root, '_combined_for_pptx')
+    _ensure_dir(combined_folder)
+    slide_idx = 0
+    for angle in angles:
+        angle_dir = angle.lower()
+        pdir = os.path.join(panels_root, angle_dir)
+        if not os.path.isdir(pdir):
+            continue
+        panel_paths = sorted(glob.glob(os.path.join(pdir, 'concat_*.png')))
+        for p in panel_paths:
+            dst = os.path.join(combined_folder, f'concat_{slide_idx:03}.png')
+            try:
+                from shutil import copyfile
+                copyfile(p, dst)
+                slide_idx += 1
+            except Exception:
+                pass
+
+    export_pptx_from_folder(combined_folder, pptx_basename=pptx_name)
