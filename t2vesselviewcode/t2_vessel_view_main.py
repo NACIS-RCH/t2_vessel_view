@@ -284,6 +284,17 @@ def main():
     except Exception as e:
         print(f"[WARNING] PNG post-processing (multimodal by angle) skipped: {e}")
 
+    # --- T2-only overview (two-row if complete, else single-row) ---
+    try:
+        png_postprocess.run_preset_t2_overview_per_depth(
+            add_orientation_labels=True,
+            background_rgb=[0,0,0],
+            threshold=2,
+            pptx_name="T2_overview"
+        )
+    except Exception as e:
+        print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
+
     return 0
 
 if __name__ == "__main__":

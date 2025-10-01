@@ -558,3 +558,100 @@ def run_preset_multimodal_by_angle_per_depth(
 
     # Export single PPTX with all angles
     export_pptx_from_folder(combined_folder, pptx_basename=pptx_name) 
+
+
+def run_preset_t2_overview_per_depth(
+    add_orientation_labels: bool = True,
+    background_rgb: List[int] = [0, 0, 0],
+    threshold: int = 2,
+    pptx_name: str = "T2_overview"
+) -> None:
+    """Stitch T2 multi-angle panels per erosion depth and export PPTX.
+
+    Angle → plane mapping (best visual quality):
+      - left/right      → T2_Sag_3D_renders
+      - anterior/posterior → T2_Cor_3D_renders
+      - superior/inferior  → T2_Tra_3D_renders
+
+    Fallback per angle: T2_3D_3D_renders if the plane-specific folder is missing/empty.
+    """
+    angles = ['left', 'right', 'superior', 'inferior', 'anterior', 'posterior']
+    angle_to_t2_plane = {
+        'left': 'T2_Sag_3D_renders',
+        'right': 'T2_Sag_3D_renders',
+        'anterior': 'T2_Cor_3D_renders',
+        'posterior': 'T2_Cor_3D_renders',
+        'superior': 'T2_Tra_3D_renders',
+        'inferior': 'T2_Tra_3D_renders',
+    }
+
+    t2_base = dir_structure.renders_t2_dir
+
+    # Resolve a directory per angle (with fallback to T2_3D)
+    resolved_dirs = {}
+    for angle in angles:
+        plane = angle_to_t2_plane.get(angle)
+        primary = os.path.join(t2_base, plane, 'by_angle', angle) if plane else None
+        chosen = None
+        if primary and os.path.isdir(primary) and _list_pngs(primary):
+            chosen = primary
+        else:
+            alt = os.path.join(t2_base, 'T2_3D_3D_renders', 'by_angle', angle)
+            if os.path.isdir(alt) and _list_pngs(alt):
+                chosen = alt
+        if chosen:
+            resolved_dirs[angle] = chosen
+
+    # If nothing usable, return early
+    if not resolved_dirs:
+        print("[WARNING] T2 overview preset skipped: no T2 renders found")
+        return
+
+    # Gather PNG lists in the canonical angles order, skip missing
+    angle_order = [a for a in angles if a in resolved_dirs]
+    dir_pngs = [_list_pngs(resolved_dirs[a]) for a in angle_order]
+    if not all(dir_pngs) or not all(len(p) == len(dir_pngs[0]) for p in dir_pngs):
+        print("[WARNING] T2 overview preset: angle folders missing or file counts unequal; will fallback to single-row if needed")
+
+    # Crop and annotate per resolved angle folder
+    cropped_lists = []
+    for angle, paths in zip(angle_order, dir_pngs):
+        dims = get_crop_dimensions(paths, background_rgb, threshold)
+        cropped = crop_image_series(paths, resolved_dirs[angle], dims)
+        annotated_dir = os.path.join(resolved_dirs[angle], '1_cropped_annotated')
+        _ensure_dir(annotated_dir)
+        ann_paths = []
+        for p in cropped:
+            out = os.path.join(annotated_dir, os.path.basename(p))
+            if add_orientation_labels:
+                annotate_by_angle_on_png(p, out, angle)
+            else:
+                try:
+                    from shutil import copyfile
+                    copyfile(p, out)
+                except Exception:
+                    continue
+            annotate_modality_center_bottom(out, out, 'T2 (inv)')
+            ann_paths.append(out)
+        cropped_lists.append(sorted(ann_paths))
+
+    # Output directory for stitched panels
+    out_panel_dir = os.path.join(dir_structure.renders_t2_dir, 'stitched_overview')
+    _ensure_dir(out_panel_dir)
+
+    # Build two-row layout if we have all six required angles; else fallback to one-row
+    angle_to_list = {ang: lst for ang, lst in zip(angle_order, cropped_lists)}
+    required_top = ['left', 'right']
+    required_bottom = ['superior', 'inferior', 'anterior', 'posterior']
+    have_all = all(a in angle_to_list for a in required_top + required_bottom)
+    n = len(cropped_lists[0]) if cropped_lists else 0
+
+    if have_all:
+        top_lists = [angle_to_list['left'], angle_to_list['right']]
+        bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
+        concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
+    else:
+        print("[WARNING] Missing one or more angles for two-row T2 overview; falling back to single-row stitching")
+        concat_one_row(n, cropped_lists, out_panel_dir)
+
+    export_pptx_from_folder(out_panel_dir, pptx_name)
