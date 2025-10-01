@@ -155,8 +155,8 @@ def main():
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
-        # Compute a robust window from the series
-        t1_window = volume_rendering.compute_series_window(t1_eroded_files)
+        # Compute a robust window from the series (use 2nd/80th percentiles for T1)
+        t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=80.0)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t1_eroded_files,
         #     dir_structure.renders_t1_dir
@@ -184,7 +184,7 @@ def main():
     # T2 Sagittal
     t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
     if t2_sag_eroded_files:
-        t2_sag_window = volume_rendering.compute_series_window(t2_sag_eroded_files)
+        t2_sag_window = volume_rendering.compute_series_window(t2_sag_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_sag_eroded_files,
         #     os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders')
@@ -202,7 +202,7 @@ def main():
     # T2 Coronal
     t2_cor_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz'))
     if t2_cor_eroded_files:
-        t2_cor_window = volume_rendering.compute_series_window(t2_cor_eroded_files)
+        t2_cor_window = volume_rendering.compute_series_window(t2_cor_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_cor_eroded_files,
         #     os.path.join(dir_structure.renders_t2_dir, 'T2_Cor_3D_renders')
@@ -220,7 +220,7 @@ def main():
     # T2 Transverse
     t2_tra_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz'))
     if t2_tra_eroded_files:
-        t2_tra_window = volume_rendering.compute_series_window(t2_tra_eroded_files)
+        t2_tra_window = volume_rendering.compute_series_window(t2_tra_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_tra_eroded_files,
         #     os.path.join(dir_structure.renders_t2_dir, 'T2_Tra_3D_renders')
@@ -238,7 +238,7 @@ def main():
     # T2 3D
     t2_3d_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz'))
     if t2_3d_eroded_files:
-        t2_3d_window = volume_rendering.compute_series_window(t2_3d_eroded_files)
+        t2_3d_window = volume_rendering.compute_series_window(t2_3d_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_3d_eroded_files,
         #     os.path.join(dir_structure.renders_t2_dir, 'T2_3D_3D_renders')
@@ -256,7 +256,7 @@ def main():
     # FLAIR
     flair_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz'))
     if flair_eroded_files:
-        flair_window = volume_rendering.compute_series_window(flair_eroded_files)
+        flair_window = volume_rendering.compute_series_window(flair_eroded_files, low_pct=7.5, high_pct=99.99)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     flair_eroded_files,
         #     os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders')
