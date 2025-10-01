@@ -164,7 +164,8 @@ def main():
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             t1_eroded_files,
             dir_structure.renders_t1_dir,
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
             window=t1_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
@@ -192,7 +193,8 @@ def main():
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_sag_eroded_files,
             os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders'),
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
             window=t2_sag_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
@@ -210,7 +212,8 @@ def main():
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_cor_eroded_files,
             os.path.join(dir_structure.renders_t2_dir, 'T2_Cor_3D_renders'),
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
             window=t2_cor_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
@@ -228,7 +231,8 @@ def main():
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_tra_eroded_files,
             os.path.join(dir_structure.renders_t2_dir, 'T2_Tra_3D_renders'),
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
             window=t2_tra_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
@@ -246,7 +250,8 @@ def main():
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             t2_3d_eroded_files,
             os.path.join(dir_structure.renders_t2_dir, 'T2_3D_3D_renders'),
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
             window=t2_3d_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
@@ -264,7 +269,8 @@ def main():
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             flair_eroded_files,
             os.path.join(dir_structure.renders_dir, 'FLAIR_3D_renders'),
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior']],
+            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
             window=flair_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
@@ -294,6 +300,18 @@ def main():
         )
     except Exception as e:
         print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
+
+    # --- Multimodal surgical quartet ---
+    try:
+        png_postprocess.run_preset_multimodal_other_angles_per_depth(
+            angles=['surg_left_lat','surg_right_lat','surg_left_ato','surg_right_ato'],
+            add_orientation_labels=True,
+            background_rgb=[0,0,0],
+            threshold=2,
+            pptx_name="multimodal_overview_other_angles"
+        )
+    except Exception as e:
+        print(f"[WARNING] PNG post-processing (multimodal other angles) skipped: {e}")
 
     return 0
 
