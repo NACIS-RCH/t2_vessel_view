@@ -118,6 +118,8 @@ def _configure_mricrogl_ini_preferences():
 
 # Tuned camera distance (persists across calls within this run only)
 _TUNED_CAMERA_DISTANCE = None
+# Detected empty hemisphere for T2 sagittal (values: 'left', 'right', None)
+_T2_SAG_EMPTY_SIDE = None
 
 def _select_least_eroded_file(nifti_paths):
     """Pick the least-eroded file: the one whose basename starts with the smallest number.
@@ -192,6 +194,86 @@ def _evaluate_camera_distance_once(nifti_path, angles, image_size, mricrogl_path
             shutil.rmtree(trial_dir)
         except Exception:
             pass
+
+def _maybe_mask_empty_hemisphere_for_t2_sag(img):
+    """Deprecated heuristic (kept for fallback). Prefer _apply_detected_t2_sag_half_mask."""
+    return None
+
+def _detect_t2_sag_empty_side_from_registered() -> str:
+    """Detect which hemisphere is empty using the pre-inversion registered T2 sagittal.
+
+    Returns 'left', 'right', or None. Caches the result in _T2_SAG_EMPTY_SIDE.
+    Criteria: count non-zero voxels per hemisphere in RAS; if one side <10% of the other → empty.
+    """
+    global _T2_SAG_EMPTY_SIDE
+    if _T2_SAG_EMPTY_SIDE is not None:
+        return _T2_SAG_EMPTY_SIDE
+
+    # Try likely filenames under the processed T2 Sag directory
+    base = dir_structure.processed_t2_sag_dir
+    candidates = [
+        os.path.join(base, 'registered_t2_sag.nii.gz'),
+        os.path.join(base, 'registered_t2_sag.nii'),
+    ]
+    # Globs as fallback
+    candidates += sorted(glob.glob(os.path.join(base, 'registered_*t2_sag*.nii*')))
+    candidates += sorted(glob.glob(os.path.join(base, '*t2_sag*.nii*')))
+
+    reg_path = None
+    for c in candidates:
+        if os.path.isfile(c):
+            reg_path = c
+            break
+    if reg_path is None:
+        _T2_SAG_EMPTY_SIDE = None
+        return _T2_SAG_EMPTY_SIDE
+
+    try:
+        img = nib.load(reg_path)
+        img = _ensure_ras(img)
+        data = img.get_fdata(dtype=np.float32)
+        if data.ndim != 3:
+            _T2_SAG_EMPTY_SIDE = None
+            return _T2_SAG_EMPTY_SIDE
+        x = data.shape[0]
+        mid = x // 2
+        left = data[:mid, :, :]
+        right = data[mid:, :, :]
+        left_nz = int(np.count_nonzero(left > 0.0))
+        right_nz = int(np.count_nonzero(right > 0.0))
+        # Avoid div by zero
+        if left_nz == 0 and right_nz == 0:
+            _T2_SAG_EMPTY_SIDE = None
+            return _T2_SAG_EMPTY_SIDE
+        # Decide: one side less than 10% of the other → empty side
+        if left_nz < 0.1 * max(right_nz, 1):
+            _T2_SAG_EMPTY_SIDE = 'left'
+        elif right_nz < 0.1 * max(left_nz, 1):
+            _T2_SAG_EMPTY_SIDE = 'right'
+        else:
+            _T2_SAG_EMPTY_SIDE = None
+        return _T2_SAG_EMPTY_SIDE
+    except Exception:
+        _T2_SAG_EMPTY_SIDE = None
+        return _T2_SAG_EMPTY_SIDE
+
+def _apply_detected_t2_sag_half_mask(img: nib.Nifti1Image) -> nib.Nifti1Image:
+    """Apply the detected empty-side half mask (if any) to the provided image and return a new image."""
+    side = _detect_t2_sag_empty_side_from_registered()
+    if side is None:
+        return img
+    ras_img = _ensure_ras(img)
+    data = ras_img.get_fdata(dtype=np.float32)
+    if data.ndim != 3:
+        return img
+    x = data.shape[0]
+    mid = x // 2
+    masked = data.copy()
+    if side == 'left':
+        masked[:mid, :, :] = 0.0
+    elif side == 'right':
+        masked[mid:, :, :] = 0.0
+    return nib.Nifti1Image(masked, ras_img.affine, header=ras_img.header)
 
 def tune_camera_distance(nifti_paths, angles, image_size, mricrogl_path, template_filename, start=0.6, dmin=0.2, dmax=1.8):
     """Find a suitable camera distance using bracketing + binary search.
@@ -420,8 +502,11 @@ def render_volume_and_save_pngs_mricrogl(
             if not os.path.isabs(p):
                 raise ValueError(f"Input path must be absolute for MRIcroGL: {p}")
             img = nib.load(p)
+            # Try masking empty hemisphere for sagittal T2 series (based on pre-inversion detection)
+            if 't2_sag' in os.path.basename(p).lower():
+                img = _apply_detected_t2_sag_half_mask(img)
             # Keep dtype as float32 to preserve intensity scaling; MRIcroGL handles .nii float32 fine
-            data = img.get_fdata(dtype=np.float32)
+            data = _ensure_ras(img).get_fdata(dtype=np.float32)
             tmp_p = os.path.join(tmp_root, os.path.splitext(os.path.basename(p))[0] + '.nii')
             nib.Nifti1Image(data, img.affine, header=img.header).to_filename(tmp_p)
             tmp_imgs.append(tmp_p)
