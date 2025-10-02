@@ -118,8 +118,9 @@ def _configure_mricrogl_ini_preferences():
 
 # Tuned camera distance (persists across calls within this run only)
 _TUNED_CAMERA_DISTANCE = None
-# Detected empty hemisphere for T2 sagittal (values: 'left', 'right', None)
-_T2_SAG_EMPTY_SIDE = None
+# Detected empty hemisphere for T2 sagittal per series tag
+# Dict[tag -> 'left' | 'right' | None]
+_T2_SAG_EMPTY_SIDE_BY_TAG = {}
 
 def _select_least_eroded_file(nifti_paths):
     """Pick the least-eroded file: the one whose basename starts with the smallest number.
@@ -199,67 +200,60 @@ def _maybe_mask_empty_hemisphere_for_t2_sag(img):
     """Deprecated heuristic (kept for fallback). Prefer _apply_detected_t2_sag_half_mask."""
     return None
 
-def _detect_t2_sag_empty_side_from_registered() -> str:
-    """Detect which hemisphere is empty using the pre-inversion registered T2 sagittal.
+def _detect_t2_sag_empty_side_for_tag(tag: str):
+    """Detect empty hemisphere for a given sagittal T2 series tag ('t2_sag', 't2_sag_left', 't2_sag_right').
 
-    Returns 'left', 'right', or None. Caches the result in _T2_SAG_EMPTY_SIDE.
+    Returns 'left', 'right', or None. Caches per tag in _T2_SAG_EMPTY_SIDE_BY_TAG.
     Criteria: count non-zero voxels per hemisphere in RAS; if one side <10% of the other → empty.
     """
-    global _T2_SAG_EMPTY_SIDE
-    if _T2_SAG_EMPTY_SIDE is not None:
-        return _T2_SAG_EMPTY_SIDE
+    if tag in _T2_SAG_EMPTY_SIDE_BY_TAG:
+        return _T2_SAG_EMPTY_SIDE_BY_TAG[tag]
 
-    # Try likely filenames under the processed T2 Sag directory
     base = dir_structure.processed_t2_sag_dir
+    # Prefer exact registered filename for the tag
     candidates = [
-        os.path.join(base, 'registered_t2_sag.nii.gz'),
-        os.path.join(base, 'registered_t2_sag.nii'),
+        os.path.join(base, f'registered_{tag}.nii.gz'),
+        os.path.join(base, f'registered_{tag}.nii'),
     ]
-    # Globs as fallback
-    candidates += sorted(glob.glob(os.path.join(base, 'registered_*t2_sag*.nii*')))
-    candidates += sorted(glob.glob(os.path.join(base, '*t2_sag*.nii*')))
+    # Fallback globs containing the tag
+    candidates += sorted(glob.glob(os.path.join(base, f'registered_*{tag}*.nii*')))
+    candidates += sorted(glob.glob(os.path.join(base, f'*{tag}*.nii*')))
 
-    reg_path = None
-    for c in candidates:
-        if os.path.isfile(c):
-            reg_path = c
-            break
+    reg_path = next((c for c in candidates if os.path.isfile(c)), None)
     if reg_path is None:
-        _T2_SAG_EMPTY_SIDE = None
-        return _T2_SAG_EMPTY_SIDE
+        _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = None
+        return _T2_SAG_EMPTY_SIDE_BY_TAG[tag]
 
     try:
         img = nib.load(reg_path)
         img = _ensure_ras(img)
         data = img.get_fdata(dtype=np.float32)
         if data.ndim != 3:
-            _T2_SAG_EMPTY_SIDE = None
-            return _T2_SAG_EMPTY_SIDE
+            _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = None
+            return _T2_SAG_EMPTY_SIDE_BY_TAG[tag]
         x = data.shape[0]
         mid = x // 2
         left = data[:mid, :, :]
         right = data[mid:, :, :]
         left_nz = int(np.count_nonzero(left > 0.0))
         right_nz = int(np.count_nonzero(right > 0.0))
-        # Avoid div by zero
         if left_nz == 0 and right_nz == 0:
-            _T2_SAG_EMPTY_SIDE = None
-            return _T2_SAG_EMPTY_SIDE
-        # Decide: one side less than 10% of the other → empty side
+            _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = None
+            return _T2_SAG_EMPTY_SIDE_BY_TAG[tag]
         if left_nz < 0.1 * max(right_nz, 1):
-            _T2_SAG_EMPTY_SIDE = 'left'
+            _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = 'left'
         elif right_nz < 0.1 * max(left_nz, 1):
-            _T2_SAG_EMPTY_SIDE = 'right'
+            _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = 'right'
         else:
-            _T2_SAG_EMPTY_SIDE = None
-        return _T2_SAG_EMPTY_SIDE
+            _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = None
+        return _T2_SAG_EMPTY_SIDE_BY_TAG[tag]
     except Exception:
-        _T2_SAG_EMPTY_SIDE = None
-        return _T2_SAG_EMPTY_SIDE
+        _T2_SAG_EMPTY_SIDE_BY_TAG[tag] = None
+        return _T2_SAG_EMPTY_SIDE_BY_TAG[tag]
 
-def _apply_detected_t2_sag_half_mask(img: nib.Nifti1Image) -> nib.Nifti1Image:
-    """Apply the detected empty-side half mask (if any) to the provided image and return a new image."""
-    side = _detect_t2_sag_empty_side_from_registered()
+def _apply_detected_t2_sag_half_mask(img: nib.Nifti1Image, tag: str) -> nib.Nifti1Image:
+    """Apply the detected empty-side half mask (if any) for a given tag and return a new image."""
+    side = _detect_t2_sag_empty_side_for_tag(tag)
     if side is None:
         return img
     ras_img = _ensure_ras(img)
@@ -502,9 +496,12 @@ def render_volume_and_save_pngs_mricrogl(
             if not os.path.isabs(p):
                 raise ValueError(f"Input path must be absolute for MRIcroGL: {p}")
             img = nib.load(p)
-            # Try masking empty hemisphere for sagittal T2 series (based on pre-inversion detection)
-            if 't2_sag' in os.path.basename(p).lower():
-                img = _apply_detected_t2_sag_half_mask(img)
+            # Try masking empty hemisphere for sagittal T2 series (per series tag)
+            base_name = os.path.basename(p).lower()
+            if 't2_sag' in base_name:
+                tag = 't2_sag_left' if 't2_sag_left' in base_name else (
+                      't2_sag_right' if 't2_sag_right' in base_name else 't2_sag')
+                img = _apply_detected_t2_sag_half_mask(img, tag)
             # Keep dtype as float32 to preserve intensity scaling; MRIcroGL handles .nii float32 fine
             data = _ensure_ras(img).get_fdata(dtype=np.float32)
             tmp_p = os.path.join(tmp_root, os.path.splitext(os.path.basename(p))[0] + '.nii')
