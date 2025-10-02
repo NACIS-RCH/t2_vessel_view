@@ -63,9 +63,20 @@ def main():
     if commandline.args.flair:
         reoriented_flair_path = preprocess.convert_and_reorient(commandline.args.flair, "flair")
 
-    reoriented_t2_sag_path = None
+    # Support one or two sagittal T2 acquisitions (generic, left, right)
+    reoriented_t2_sag_paths = []
     if commandline.args.t2_sag:
-        reoriented_t2_sag_path = preprocess.convert_and_reorient(commandline.args.t2_sag, "t2_sag")
+        reoriented_t2_sag_paths.append(
+            preprocess.convert_and_reorient(commandline.args.t2_sag, "t2_sag")
+        )
+    if getattr(commandline.args, 't2_sag_left', None):
+        reoriented_t2_sag_paths.append(
+            preprocess.convert_and_reorient(commandline.args.t2_sag_left, "t2_sag_left")
+        )
+    if getattr(commandline.args, 't2_sag_right', None):
+        reoriented_t2_sag_paths.append(
+            preprocess.convert_and_reorient(commandline.args.t2_sag_right, "t2_sag_right")
+        )
 
     reoriented_t2_cor_path = None
     if commandline.args.t2_cor:
@@ -85,10 +96,16 @@ def main():
         preprocessed_flair, preprocessed_flair_img = preprocess.preprocess_n4_reg(reoriented_flair_path, "flair", preprocessed_main_image_path)
 
     ## preprocess t2 images
-    preprocessed_t2_sag_path = None
-    preprocessed_t2_sag_img = None
-    if reoriented_t2_sag_path:
-        preprocessed_t2_sag_path, preprocessed_t2_sag_img = preprocess.preprocess_n4_reg(reoriented_t2_sag_path, "t2_sag", preprocessed_main_image_path)
+    preprocessed_t2_sag_paths = []
+    preprocessed_t2_sag_imgs = []
+    for reor_path in reoriented_t2_sag_paths:
+        # Use the imagetype string embedded in the filename tag to keep outputs distinct
+        # If reor_path name contains 't2_sag_left' or 't2_sag_right', preserve it; else default to 't2_sag'
+        tag = 't2_sag_left' if 't2_sag_left' in os.path.basename(reor_path) else (
+              't2_sag_right' if 't2_sag_right' in os.path.basename(reor_path) else 't2_sag')
+        pp_path, pp_img = preprocess.preprocess_n4_reg(reor_path, tag, preprocessed_main_image_path)
+        preprocessed_t2_sag_paths.append(pp_path)
+        preprocessed_t2_sag_imgs.append(pp_img)
 
     preprocessed_t2_cor_path = None
     preprocessed_t2_cor_img = None
@@ -101,9 +118,13 @@ def main():
         preprocessed_t2_tra_path, preprocessed_t2_tra_img = preprocess.preprocess_n4_reg(reoriented_t2_tra_path, "t2_tra", preprocessed_main_image_path)
 
     ## postprocess t2 images
-    postprocessed_t2_sag_image = None
-    if preprocessed_t2_sag_path:
-        postprocessed_t2_sag_image = preprocess.postprocess_t2(preprocessed_t2_sag_path, "t2_sag")
+    # Keep (image, tag) pairs so tags propagate to eroded filenames
+    postprocessed_t2_sag_items = []
+    for pp_path in preprocessed_t2_sag_paths:
+        tag = 't2_sag_left' if 't2_sag_left' in os.path.basename(pp_path) else (
+              't2_sag_right' if 't2_sag_right' in os.path.basename(pp_path) else 't2_sag')
+        img_obj = preprocess.postprocess_t2(pp_path, tag)
+        postprocessed_t2_sag_items.append((img_obj, tag))
 
     postprocessed_t2_tra_image = None
     if preprocessed_t2_tra_path:
@@ -138,8 +159,9 @@ def main():
     if eroded_masks_dict and zero_padded_erode_depths_list:
         if preprocessed_main_image:
             res_t1 = masking.multiply_masks_by_images(preprocessed_main_image, "t1", dir_structure.eroded_nifti_t1_dir, zero_padded_erode_depths_list, eroded_masks_dict)
-        if postprocessed_t2_sag_image:
-            res_t2_sag = masking.multiply_masks_by_images(postprocessed_t2_sag_image, "t2_sag", dir_structure.eroded_nifti_t2_sag_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+        # Handle one or more sagittal T2s with explicit tags
+        for t2s_img, tag in postprocessed_t2_sag_items:
+            _ = masking.multiply_masks_by_images(t2s_img, tag, dir_structure.eroded_nifti_t2_sag_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if postprocessed_t2_cor_image:
             res_t2_cor = masking.multiply_masks_by_images(postprocessed_t2_cor_image, "t2_cor", dir_structure.eroded_nifti_t2_cor_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if postprocessed_t2_tra_image:
@@ -186,21 +208,43 @@ def main():
     t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
     if t2_sag_eroded_files:
         t2_sag_window = volume_rendering.compute_series_window(t2_sag_eroded_files, low_pct=0.3, high_pct=99.75)
-        # volume_rendering.render_volume_and_save_pngs_pyvista(
-        #     t2_sag_eroded_files,
-        #     os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders')
-        # )
-        volume_rendering.render_volume_and_save_pngs_mricrogl(
-            t2_sag_eroded_files,
-            os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders'),
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
-                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
-            window=t2_sag_window,
-            image_size=(1200,1200),
-            mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py",
-            camera_distance='auto'
-        )
+        # Split into left/right/generic lists by filename tag
+        t2_sag_left_files = [p for p in t2_sag_eroded_files if 't2_sag_left' in os.path.basename(p).lower()]
+        t2_sag_right_files = [p for p in t2_sag_eroded_files if 't2_sag_right' in os.path.basename(p).lower()]
+        t2_sag_generic_files = [p for p in t2_sag_eroded_files if ('t2_sag_left' not in os.path.basename(p).lower() and 't2_sag_right' not in os.path.basename(p).lower())]
+
+        # Define angle subsets
+        left_angles = [[90,0,'left'], [270,180,'surg_left_lat'], [300,175,'surg_left_ato']]
+        right_angles = [[270,0,'right'], [90,180,'surg_right_lat'], [60,175,'surg_right_ato']]
+
+        # Choose file lists per subset with sensible fallbacks
+        files_for_left = t2_sag_left_files or t2_sag_generic_files or t2_sag_right_files
+        files_for_right = t2_sag_right_files or t2_sag_generic_files or t2_sag_left_files
+
+        # Render left subset if any files available
+        if files_for_left:
+            volume_rendering.render_volume_and_save_pngs_mricrogl(
+                files_for_left,
+                os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders'),
+                angles=left_angles,
+                window=t2_sag_window,
+                image_size=(1200,1200),
+                mricrogl_path=mricrogl_exec,
+                template_filename="mricrogl_T1_screenshot_test.py",
+                camera_distance='auto'
+            )
+        # Render right subset if any files available
+        if files_for_right:
+            volume_rendering.render_volume_and_save_pngs_mricrogl(
+                files_for_right,
+                os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders'),
+                angles=right_angles,
+                window=t2_sag_window,
+                image_size=(1200,1200),
+                mricrogl_path=mricrogl_exec,
+                template_filename="mricrogl_T1_screenshot_test.py",
+                camera_distance='auto'
+            )
     # T2 Coronal
     t2_cor_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz'))
     if t2_cor_eroded_files:

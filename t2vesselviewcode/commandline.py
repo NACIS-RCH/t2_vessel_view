@@ -48,6 +48,21 @@ parser.add_argument('-s',
             help='2D sagittal T2-weighted MRI image. Can include single hemisphere acquisitions.',
             dest='t2_sag')
 
+# Optional separate sagittal acquisitions per hemisphere (advanced use)
+parser.add_argument('--t2_sag_left', 
+            metavar='t2_sagittal_left', 
+            type=str, 
+            action='store', 
+            help='Left-hemisphere sagittal T2 (unilateral acquisition). If provided with --t2_sag_right, both will be processed.',
+            dest='t2_sag_left')
+
+parser.add_argument('--t2_sag_right', 
+            metavar='t2_sagittal_right', 
+            type=str, 
+            action='store', 
+            help='Right-hemisphere sagittal T2 (unilateral acquisition). If provided with --t2_sag_left, both will be processed.',
+            dest='t2_sag_right')
+
 parser.add_argument('-t', 
             metavar='t2_transverse', 
             type=str, 
