@@ -401,7 +401,7 @@ def main():
     except Exception as e:
         print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
 
-    # --- Multimodal surgical quartet ---
+    # --- Multimodal surgical angles ---
     try:
         png_postprocess.run_preset_multimodal_other_angles_per_depth(
             angles=['surg_left_lat','surg_right_lat','surg_left_ato','surg_right_ato'],
