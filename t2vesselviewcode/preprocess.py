@@ -268,8 +268,8 @@ def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
         
     Returns
     -------
-    String
-        Postprocessed T2 image path
+    sitk image object
+        Postprocessed T2 image 
     
     """
     output_dir = get_preprocessed_dir(preprocessed_imagetype_string)
@@ -288,5 +288,5 @@ def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
     t2_inv_re_rescale = sitk.RescaleIntensity(t2_inv_sqr, outputMinimum = 0, outputMaximum = 1000)
     utils.write_debug_image(t2_inv_re_rescale, f"inv_sqr_re_rescale_{preprocessed_imagetype_string}.nii.gz", output_dir)
     
-    return t2_inv_rescale
+    return t2_inv_re_rescale
     
