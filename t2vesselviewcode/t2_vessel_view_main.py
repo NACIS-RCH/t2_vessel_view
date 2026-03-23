@@ -147,17 +147,46 @@ def main():
     if preprocessed_t2_3d_path:
         postprocessed_t2_3d_image = preprocess.postprocess_t2(preprocessed_t2_3d_path, "t2_3d")
 
-    ## generate mask
+    ## generate automatic mask for QA (and for processing if no user mask is supplied)
     mask_source_path = preprocessed_flair or preprocessed_main_image_path
-    mask_to_input = masking.generate_mask(mask_source_path)
+    auto_mask_path = masking.generate_mask(mask_source_path)
 
-    # --- Save QA overlay of generated mask on main image (all axes) ---
-    mask_img_for_qa = sitk.ReadImage(mask_to_input)
-    utils.save_qa_mask_overlay(
-        main_image=preprocessed_main_image,
-        mask_image=mask_img_for_qa,
-        filename="QA_mask_overlay_initial.png"
-    )
+    if not commandline.args.user_mask:
+        print(
+            "[INFO] No user-provided mask was supplied. This is the default. "
+            "The automatically generated BET mask will be used for processing. "
+            "If manual correction of the mask is needed, or if you have a better mask than the pipeline generates, rerun the pipeline and input your preferred mask  with --user_mask."
+        )
+        mask_to_input = auto_mask_path
+        auto_mask_img_for_qa = sitk.ReadImage(auto_mask_path)
+        utils.save_qa_mask_overlay(
+            main_image=preprocessed_main_image,
+            mask_image=auto_mask_img_for_qa,
+            filename="QA_mask_overlay_auto_mask.png"
+        )
+    else:
+        if not os.path.exists(commandline.args.user_mask):
+            raise FileNotFoundError(f"User-provided mask not found: {commandline.args.user_mask}")
+        print(
+            "[INFO] User-provided mask detected. "
+            "The user mask will be used for processing. "
+            "An automatic BET mask will also be generated for QA comparison."
+        )
+        mask_to_input = commandline.args.user_mask
+
+        auto_mask_img_for_qa = sitk.ReadImage(auto_mask_path)
+        utils.save_qa_mask_overlay(
+            main_image=preprocessed_main_image,
+            mask_image=auto_mask_img_for_qa,
+            filename="QA_mask_overlay_auto_mask.png"
+        )
+
+        user_mask_img_for_qa = sitk.ReadImage(mask_to_input)
+        utils.save_qa_mask_overlay(
+            main_image=preprocessed_main_image,
+            mask_image=user_mask_img_for_qa,
+            filename="QA_mask_overlay_user_mask.png"
+        )
     
     ## process mask
     sdt_all_plus_2 = masking.main_mask_operations(mask_to_input)
