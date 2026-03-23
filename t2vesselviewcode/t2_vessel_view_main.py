@@ -86,6 +86,10 @@ def main():
     if commandline.args.t2_tra:
         reoriented_t2_tra_path = preprocess.convert_and_reorient(commandline.args.t2_tra, "t2_tra")
 
+    reoriented_t2_3d_path = None
+    if commandline.args.t2_3d:
+        reoriented_t2_3d_path = preprocess.convert_and_reorient(commandline.args.t2_3d, "t2_3d")
+
     ## preprocess t1    
     preprocessed_main_image, preprocessed_main_image_path = preprocess.preprocess_main_image(reoriented_main_image_path)
 
@@ -117,6 +121,11 @@ def main():
     if reoriented_t2_tra_path:
         preprocessed_t2_tra_path, preprocessed_t2_tra_img = preprocess.preprocess_n4_reg(reoriented_t2_tra_path, "t2_tra", preprocessed_main_image_path)
 
+    preprocessed_t2_3d_path = None
+    preprocessed_t2_3d_img = None
+    if reoriented_t2_3d_path:
+        preprocessed_t2_3d_path, preprocessed_t2_3d_img = preprocess.preprocess_n4_reg(reoriented_t2_3d_path, "t2_3d", preprocessed_main_image_path)
+
     ## postprocess t2 images
     # Keep (image, tag) pairs so tags propagate to eroded filenames
     postprocessed_t2_sag_items = []
@@ -135,11 +144,12 @@ def main():
         postprocessed_t2_cor_image = preprocess.postprocess_t2(preprocessed_t2_cor_path, "t2_cor")
 
     postprocessed_t2_3d_image = None
-    if commandline.args.t2_3d:
-        postprocessed_t2_3d_image = preprocess.postprocess_t2(commandline.args.t2_3d, "t2_3d")
+    if preprocessed_t2_3d_path:
+        postprocessed_t2_3d_image = preprocess.postprocess_t2(preprocessed_t2_3d_path, "t2_3d")
 
     ## generate mask
-    mask_to_input = masking.generate_mask(preprocessed_flair)
+    mask_source_path = preprocessed_flair or preprocessed_main_image_path
+    mask_to_input = masking.generate_mask(mask_source_path)
 
     # --- Save QA overlay of generated mask on main image (all axes) ---
     mask_img_for_qa = sitk.ReadImage(mask_to_input)
