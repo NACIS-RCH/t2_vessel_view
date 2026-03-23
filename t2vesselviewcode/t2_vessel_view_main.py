@@ -150,6 +150,7 @@ def main():
     ## generate automatic mask for QA (and for processing if no user mask is supplied)
     mask_source_path = preprocessed_flair or preprocessed_main_image_path
     auto_mask_path = masking.generate_mask(mask_source_path)
+    auto_mask_exists = os.path.exists(auto_mask_path)
 
     if not commandline.args.user_mask:
         print(
@@ -157,8 +158,18 @@ def main():
             "The automatically generated BET mask will be used for processing. "
             "If manual correction of the mask is needed, or if you have a better mask than the pipeline generates, rerun the pipeline and input your preferred mask  with --user_mask."
         )
+        if not auto_mask_exists:
+            print(
+                "[ERROR] BET mask generation failed: no automatic mask file was found. "
+                "You could try providing a user-generated mask with --user_mask and rerun."
+            )
+            sys.exit(1)
         mask_to_input = auto_mask_path
-        auto_mask_img_for_qa = sitk.ReadImage(auto_mask_path)
+        try:
+            auto_mask_img_for_qa = sitk.ReadImage(auto_mask_path)
+        except Exception as e:
+            print(f"[ERROR] Could not read generated BET mask for processing: {e}")
+            sys.exit(1)
         utils.save_qa_mask_overlay(
             main_image=preprocessed_main_image,
             mask_image=auto_mask_img_for_qa,
@@ -174,12 +185,18 @@ def main():
         )
         mask_to_input = commandline.args.user_mask
 
-        auto_mask_img_for_qa = sitk.ReadImage(auto_mask_path)
-        utils.save_qa_mask_overlay(
-            main_image=preprocessed_main_image,
-            mask_image=auto_mask_img_for_qa,
-            filename="QA_mask_overlay_auto_mask.png"
-        )
+        if auto_mask_exists:
+            try:
+                auto_mask_img_for_qa = sitk.ReadImage(auto_mask_path)
+                utils.save_qa_mask_overlay(
+                    main_image=preprocessed_main_image,
+                    mask_image=auto_mask_img_for_qa,
+                    filename="QA_mask_overlay_auto_mask.png"
+                )
+            except Exception as e:
+                print(f"[WARNING] Could not generate QA overlay for automatic BET mask: {e}")
+        else:
+            print("[WARNING] Automatic BET mask was not created. Continuing with user-provided mask only.")
 
         user_mask_img_for_qa = sitk.ReadImage(mask_to_input)
         utils.save_qa_mask_overlay(
