@@ -196,6 +196,17 @@ def main():
     else:
         if not os.path.exists(commandline.args.user_mask):
             raise FileNotFoundError(f"User-provided mask not found: {commandline.args.user_mask}")
+        mask_dims_ok, mask_dims_message = input_validation.validate_mask_voxel_dimensions(
+            commandline.args.user_mask,
+            preprocessed_main_image
+        )
+        if not mask_dims_ok:
+            print(f"[ERROR] {mask_dims_message}")
+            print(
+                "[ERROR] Please provide a mask with matching voxel dimensions "
+                "(voxel size, spacing and grid size) to the main image that is input."
+            )
+            sys.exit(1)
         print(
             "[INFO] User-provided mask detected. "
             "The user mask will be used for processing. "
