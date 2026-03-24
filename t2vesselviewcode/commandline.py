@@ -96,6 +96,15 @@ parser.add_argument('--use-hull-mask',
             help='Use convex hull mask to include sagittal sinus (may affect cortical surface morphology)',
             dest='use_hull_mask')
 
+parser.add_argument('--auto-mask-method',
+            metavar='auto_mask_method',
+            type=str,
+            choices=['bet', 'watershed'],
+            action='store',
+            help='Automatic mask method: "bet" (default) or "watershed" (FLAIR-based scalping).',
+            default='bet',
+            dest='auto_mask_method')
+
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
 ## add flags for save masks or not
