@@ -58,7 +58,9 @@ def save_qa_mask_overlay(
 ):
     """
     Save a QA PNG of a mask overlaid on a main image (2D slices) using matplotlib.
-    The output figure will show overlays for all three anatomical axes (axial, coronal, sagittal).
+    The output figure shows:
+    1) top row with three orthogonal overlays (axial, coronal, sagittal)
+    2) bottom axial lightbox (6 columns x 5 rows) to better reveal local mask details
     Assumes volumes have been standardised to RAS (Right–Anterior–Superior) orientation.
     Displays in radiological convention for axial and coronal (patient's Right on image Left).
 
@@ -95,8 +97,13 @@ def save_qa_mask_overlay(
     mid_coronal = main_np.shape[1] // 2    # y axis (coronal)
     mid_sagittal = main_np.shape[2] // 2   # x axis (sagittal)
 
-    # Create a figure with 3 subplots (one for each anatomical axis)
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6))
+    # Create a two-row figure:
+    # - top: 3 orthogonal panels
+    # - bottom: 6x5 axial lightbox
+    fig = plt.figure(figsize=(18, 16))
+    gs = fig.add_gridspec(2, 1, height_ratios=[1, 2.2], hspace=0.12)
+    top_gs = gs[0].subgridspec(1, 3, wspace=0.06)
+    axes = [fig.add_subplot(top_gs[0, i]) for i in range(3)]
 
     # Common text style with outline for readability
     text_style = dict(color='w', fontsize=12, weight='bold', ha='center', va='center',
@@ -148,9 +155,49 @@ def save_qa_mask_overlay(
     if show_colorbar:
         plt.colorbar(axes[2].images[0], ax=axes[2], fraction=0.046, pad=0.04)
 
+    # --- Axial lightbox (6 cols x 5 rows) ---
+    n_cols = 6
+    n_rows = 5
+    n_tiles = n_cols * n_rows
+    lightbox_gs = gs[1].subgridspec(n_rows, n_cols, wspace=0.01, hspace=0.01)
+
+    # Evenly sample slices across the superior-inferior range with a small margin.
+    z_size = main_np.shape[0]
+    z_start = max(0, int(round(0.05 * (z_size - 1))))
+    z_end = max(z_start, int(round(0.95 * (z_size - 1))))
+    if z_end == z_start:
+        z_indices = np.full(n_tiles, z_start, dtype=int)
+    else:
+        z_indices = np.linspace(z_start, z_end, n_tiles).astype(int)
+
+    for idx in range(n_tiles):
+        r = idx // n_cols
+        c = idx % n_cols
+        ax = fig.add_subplot(lightbox_gs[r, c])
+        z = int(z_indices[idx])
+        ax.imshow(main_np[z, :, :], cmap=cmap_main, interpolation="none", origin='lower')
+        ax.imshow(
+            np.ma.masked_where(mask_np[z, :, :] == 0, mask_np[z, :, :]),
+            cmap=cmap_mask,
+            alpha=alpha,
+            interpolation="none",
+            origin='lower',
+        )
+        # Radiological axial convention
+        ax.invert_xaxis()
+        ax.axis("off")
+
+        # Orientation labels only on top-left tile (requested)
+        if idx == 0:
+            ax.text(0.5, 0.02, 'P', transform=ax.transAxes, **text_style)
+            ax.text(0.5, 0.98, 'A', transform=ax.transAxes, **text_style)
+            ax.text(0.02, 0.5, 'R', transform=ax.transAxes, **text_style)
+            ax.text(0.98, 0.5, 'L', transform=ax.transAxes, **text_style)
+            ax.set_title("Axial Lightbox (sampled slices)", fontsize=10)
+
     # Set the main title and save the figure
     fig.suptitle("Mask overlay QA (Radiological display)", fontsize=16)
-    plt.tight_layout(rect=[0, 0.03, 1, 0.95])
+    plt.tight_layout(rect=[0, 0.02, 1, 0.96])
     outpath = os.path.join(output_dir, filename)
     plt.savefig(outpath, bbox_inches="tight", dpi=150)
     plt.close(fig)
