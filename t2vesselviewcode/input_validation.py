@@ -169,3 +169,69 @@ def validate_input_files(
     # Return True if no errors were found, False otherwise
     return len(errors) == 0, errors
 
+
+def validate_mask_voxel_dimensions(
+    mask_path: str,
+    reference_image: sitk.Image,
+    spacing_tolerance: float = 1e-3
+) -> Tuple[bool, str]:
+    """
+    Validate that a user mask has compatible voxel dimensions with the main image.
+
+    This function intentionally checks only voxel dimensions and image grid size:
+    - spacing (voxel size) must match within tolerance
+    - grid size must match exactly
+    It does NOT check registration/alignment (origin, direction, transform quality).
+
+    Parameters
+    ----------
+    mask_path : str
+        Path to the user-provided mask file.
+    reference_image : sitk.Image
+        The reference main image (preprocessed main image in this pipeline).
+    spacing_tolerance : float
+        Absolute tolerance for spacing comparison in mm.
+
+    Returns
+    -------
+    Tuple[bool, str]
+        (True, message) if compatible; otherwise (False, error_message).
+    """
+    if not os.path.exists(mask_path):
+        return False, f"Mask file not found: {mask_path}"
+
+    try:
+        mask_image = sitk.ReadImage(mask_path)
+    except Exception as e:
+        return False, f"Could not read mask file: {e}"
+
+    # Check image dimensionality first (must both be 3D in this pipeline).
+    if mask_image.GetDimension() != reference_image.GetDimension():
+        return (
+            False,
+            "Voxel dimensions of mask do not match those of main image: "
+            f"mask dimension={mask_image.GetDimension()}D, "
+            f"main image dimension={reference_image.GetDimension()}D."
+        )
+
+    # Check voxel spacing with a strict tolerance.
+    mask_spacing = tuple(float(v) for v in mask_image.GetSpacing())
+    ref_spacing = tuple(float(v) for v in reference_image.GetSpacing())
+    spacing_matches = np.allclose(mask_spacing, ref_spacing, atol=spacing_tolerance, rtol=0.0)
+    if not spacing_matches:
+        return (
+            False,
+            "Voxel dimensions of mask do not match those of main image. "
+            f"Mask spacing={mask_spacing}, main image spacing={ref_spacing}."
+        )
+
+    # Check grid size because downstream overlay/multiplication expects same voxel grid shape.
+    if mask_image.GetSize() != reference_image.GetSize():
+        return (
+            False,
+            "Mask grid size does not match main image grid size. "
+            f"Mask size={mask_image.GetSize()}, main image size={reference_image.GetSize()}."
+        )
+
+    return True, "Mask voxel dimensions are compatible with main image."
+
