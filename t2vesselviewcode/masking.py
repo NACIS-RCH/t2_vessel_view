@@ -68,6 +68,40 @@ def generate_mask(image_for_mask):
 
     return hires_mask_path
 
+
+def generate_mask_watershed(flair_path):
+    """
+    Generate a brain mask using watershed scalping on preprocessed FLAIR.
+
+    Parameters
+    ----------
+    flair_path : string
+        Path to preprocessed FLAIR image in pipeline space.
+
+    Returns
+    -------
+    String
+        Path to generated watershed mask.
+    """
+    out_path = os.path.join(dir_structure.processing_mask_dir, "watershed_flair_brain_mask.nii.gz")
+    workdir = os.path.join(dir_structure.processing_mask_dir, "watershed_work")
+
+    if TEST_MODE:
+        os.makedirs(dir_structure.processing_mask_dir, exist_ok=True)
+        dummy_mask = sitk.Image([100, 100, 100], sitk.sitkUInt8)
+        dummy_mask.SetSpacing([1.0, 1.0, 1.0])
+        sitk.WriteImage(dummy_mask, out_path)
+        return out_path
+
+    if not flair_path:
+        raise ValueError("Watershed mask generation requires a preprocessed FLAIR path.")
+
+    from . import scalpFlair
+
+    print("[INFO] Generating brain mask with watershed scalping method")
+    scalpFlair.run_watershed_scalping(flair_path, workdir, out_path)
+    return out_path
+
 def main_mask_operations(resampled_mask): 
     """
     Performs main mask operations including erosion and optional hull mask creation.
