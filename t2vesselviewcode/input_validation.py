@@ -18,6 +18,8 @@ import numpy as np  # For numerical operations
 from pathlib import Path  # Modern way to handle file paths
 from typing import Dict, List, Optional, Tuple, Union  # Type hints for better code documentation
 
+# TODO: check OS?
+
 # Set up logging configuration
 # This creates a logger that will show timestamps and message levels
 logging.basicConfig(
