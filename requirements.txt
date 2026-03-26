@@ -8,8 +8,8 @@ nipype>=1.8.6
 antspyx>=0.5.4
 matplotlib>=3.7.0
 pyvista>=0.44.0
+pyvips>=2.2.0
 pyvips-binary>=8.16.0; platform_system == "Linux"
-pyvips>=2.2.0; platform_system != "Linux"
 Pillow>=10.0.0
 python-pptx>=0.6.21
 tqdm>=4.65.0
