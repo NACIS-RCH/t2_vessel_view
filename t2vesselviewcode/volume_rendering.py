@@ -494,7 +494,7 @@ def render_volume_and_save_pngs_mricrogl(
     window=(0, 1000),
     image_size=(1200, 1200),
     mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
-    template_filename="mricrogl_T1_screenshot_test.py",
+    template_filename="mricrogl_T1_renders.py",
     camera_distance=0.6
 ):
     """

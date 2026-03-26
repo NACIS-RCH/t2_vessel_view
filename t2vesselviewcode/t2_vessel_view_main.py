@@ -52,7 +52,7 @@ def run_dependency_preflight():
     # MRIcroGL template used by current rendering calls
     try:
         template_path = volume_rendering.resolve_mricrogl_template_path(
-            "mricrogl_T1_screenshot_test.py"
+            "mricrogl_T1_renders.py"
         )
         print(f"[OK] MRIcroGL render template found: {template_path}")
     except Exception as e:
@@ -345,7 +345,7 @@ def main():
             window=t1_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py",
+            template_filename="mricrogl_T1_renders.py",
             camera_distance='auto'
         )
         # Post-process: crop, L/R annotate, stitch, and export PPTX for T1 overview
@@ -384,7 +384,7 @@ def main():
                 window=t2_sag_window,
                 image_size=(1200,1200),
                 mricrogl_path=mricrogl_exec,
-                template_filename="mricrogl_T1_screenshot_test.py",
+                template_filename="mricrogl_T1_renders.py",
                 camera_distance='auto'
             )
         # Render right subset if any files available
@@ -396,7 +396,7 @@ def main():
                 window=t2_sag_window,
                 image_size=(1200,1200),
                 mricrogl_path=mricrogl_exec,
-                template_filename="mricrogl_T1_screenshot_test.py",
+                template_filename="mricrogl_T1_renders.py",
                 camera_distance='auto'
             )
     # T2 Coronal
@@ -415,7 +415,7 @@ def main():
             window=t2_cor_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py",
+            template_filename="mricrogl_T1_renders.py",
             camera_distance='auto'
         )
     # T2 Transverse
@@ -434,7 +434,7 @@ def main():
             window=t2_tra_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py",
+            template_filename="mricrogl_T1_renders.py",
             camera_distance='auto'
         )
     # T2 3D
@@ -453,7 +453,7 @@ def main():
             window=t2_3d_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py",
+            template_filename="mricrogl_T1_renders.py",
             camera_distance='auto'
         )
     # FLAIR
@@ -472,7 +472,7 @@ def main():
             window=flair_window,
             image_size=(1200,1200),
             mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_screenshot_test.py",
+            template_filename="mricrogl_T1_renders.py",
             camera_distance='auto'
         )
 
