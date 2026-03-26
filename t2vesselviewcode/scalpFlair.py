@@ -3,6 +3,7 @@
 ### Thanks Richard Beare for this code
 ### Simple watershed scalping for FLAIR 
 
+# TODO: change size of strel to create more space between brain and background marker
 
 
 import sys
