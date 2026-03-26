@@ -24,6 +24,17 @@ conda activate t2vv
 pip install -e .
 ```
 
+### Linux pip-first install (no sudo)
+If `conda env create` is slow/hangs, a pip-first workflow is supported:
+```bash
+conda create -n t2vv python=3.10 -y
+conda activate t2vv
+pip install -r requirements.txt
+pip install -e .
+```
+
+For Linux, dependencies include `pyvips-binary`, which provides bundled libvips for `pyvips` usage without system-level install.
+
 Tested on macOS; Python version as per `t2vv_env.yml`/`pyproject.toml`.
 
 ## Quick start
