@@ -533,6 +533,13 @@ def render_volume_and_save_pngs_mricrogl(
             [180, -90, 'inferior'],
         ]
 
+    # Enforce deterministic render order (least eroded first).
+    # Erosion files are zero-padded (e.g., 005_, 010_), so alphabetical works.
+    try:
+        nifti_paths = sorted(nifti_paths, key=os.path.basename)
+    except Exception:
+        pass
+
     os.makedirs(output_dir, exist_ok=True)
 
     # Resolve template path from package/legacy/custom locations
