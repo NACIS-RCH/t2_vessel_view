@@ -41,11 +41,6 @@ def read_ants_image(path):
     else:
         raise AttributeError("ANTsPy does not have image_read or read_image")
 
-## 
-test_data_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_dataset'
-test_output_dir = '/Users/bonniealexander/Code/NACIS-RCH/testing_t2vv/test_outputs'
-#rxs_mask_path = os.path.join(test_data_dir, "rxs_mask.nii.gz")
-
 def save_qa_mask_overlay(
     main_image,
     mask_image,
