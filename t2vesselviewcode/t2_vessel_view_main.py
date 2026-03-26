@@ -46,6 +46,8 @@ def run_dependency_preflight():
     except Exception as e:
         errors.append(
             "MRIcroGL not found. Install MRIcroGL or set T2VV_MRICROGL_PATH. "
+            "Try this command to locate it: "
+            "`command -v MRIcroGL || command -v mricrogl || command -v MRIcroGL_QT`. "
             f"Details: {e}"
         )
 
@@ -81,7 +83,7 @@ def run_dependency_preflight():
         )
 
     if errors:
-        print("[ERROR] Dependency preflight failed:")
+        print("[ERROR] Checks for external software dependencies (programs FSL and MRIcroGL) could not find all of the software needed to run this package:")
         for err in errors:
             print(f"  - {err}")
         return False
@@ -117,11 +119,6 @@ def main():
 
     # Create directory structure
     dir_structure.create_directories()
-
-    viewer = sitk.ImageViewer()
-    viewer.SetFileExtension('.nii.gz')
-    viewer.SetCommand('/group/deve2/local/focal/MRIcroGL/MRIcroGL_QT')
-    ##viewer.Execute(file)
 
 
     ## reorient inputs to standard orientation 
