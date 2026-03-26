@@ -6,6 +6,7 @@ import nibabel as nb
 import nibabel.freesurfer.mghformat as fsmgh
 import gzip
 import sys
+import shutil
 import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
@@ -26,7 +27,73 @@ from . import volume_rendering
 from . import png_postprocess
 
 
+def run_dependency_preflight():
+    """Check required external tools and templates before processing starts."""
+    if TEST_MODE:
+        print("[INFO] Test mode enabled: skipping external dependency preflight checks.")
+        return True
+
+    errors = []
+
+    print("Running dependency preflight checks...")
+
+    # MRIcroGL executable
+    try:
+        mricrogl_path = volume_rendering.resolve_mricrogl_executable(
+            os.environ.get("T2VV_MRICROGL_PATH", "")
+        )
+        print(f"[OK] MRIcroGL found: {mricrogl_path}")
+    except Exception as e:
+        errors.append(
+            "MRIcroGL not found. Install MRIcroGL or set T2VV_MRICROGL_PATH. "
+            f"Details: {e}"
+        )
+
+    # MRIcroGL template used by current rendering calls
+    try:
+        template_path = volume_rendering.resolve_mricrogl_template_path(
+            "mricrogl_T1_screenshot_test.py"
+        )
+        print(f"[OK] MRIcroGL render template found: {template_path}")
+    except Exception as e:
+        errors.append(
+            "MRIcroGL render template not found. Ensure display script templates are installed "
+            "or set T2VV_MRICROGL_TEMPLATE_DIR. "
+            f"Details: {e}"
+        )
+
+    # FSL commands needed by this pipeline
+    bet_path = shutil.which("bet")
+    robustfov_path = shutil.which("robustfov")
+
+    if bet_path:
+        print(f"[OK] FSL BET found: {bet_path}")
+    else:
+        errors.append(
+            "FSL BET command not found ('bet'). Install FSL and ensure it is on PATH."
+        )
+
+    if robustfov_path:
+        print(f"[OK] FSL RobustFOV found: {robustfov_path}")
+    else:
+        errors.append(
+            "FSL RobustFOV command not found ('robustfov'). Install FSL and ensure it is on PATH."
+        )
+
+    if errors:
+        print("[ERROR] Dependency preflight failed:")
+        for err in errors:
+            print(f"  - {err}")
+        return False
+
+    print("Dependency preflight checks passed.")
+    return True
+
+
 def main():
+    if not run_dependency_preflight():
+        sys.exit(1)
+
     # Validate input files before processing
     print("Validating input files...")
     is_valid, errors = input_validation.validate_input_files(
@@ -257,8 +324,10 @@ def main():
             res_t2_3d = masking.multiply_masks_by_images(postprocessed_t2_3d_image, "t2_3d", dir_structure.eroded_nifti_t2_3d_dir, zero_padded_erode_depths_list, eroded_masks_dict)
 
     # --- Volume rendering and PNG output ---
-    # Resolve MRIcroGL executable (allow override via env var)
-    mricrogl_exec = os.environ.get('T2VV_MRICROGL_PATH', "/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL")
+    # Resolve MRIcroGL executable across macOS/Linux (env var, PATH, common locations)
+    mricrogl_exec = volume_rendering.resolve_mricrogl_executable(
+        os.environ.get('T2VV_MRICROGL_PATH', "")
+    )
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:

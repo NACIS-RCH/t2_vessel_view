@@ -11,6 +11,73 @@ import glob
 from . import dir_structure
 
 
+def resolve_mricrogl_executable(user_path=None):
+    """Resolve MRIcroGL executable path across macOS/Linux with clear fallback order."""
+    candidates = []
+
+    if user_path:
+        candidates.append(user_path)
+
+    env_path = os.environ.get("T2VV_MRICROGL_PATH", "").strip()
+    if env_path:
+        candidates.append(env_path)
+
+    for name in ("MRIcroGL", "mricrogl", "MRIcroGL_QT"):
+        which_path = shutil.which(name)
+        if which_path:
+            candidates.append(which_path)
+
+    # Known common install paths on macOS and Linux
+    candidates.extend([
+        "/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",  # macOS app bundle
+        "/usr/local/bin/MRIcroGL",
+        "/usr/bin/MRIcroGL",
+        "/opt/MRIcroGL/MRIcroGL",
+    ])
+
+    # Keep order but deduplicate
+    seen = set()
+    ordered = []
+    for c in candidates:
+        if c and c not in seen:
+            ordered.append(c)
+            seen.add(c)
+
+    for c in ordered:
+        if os.path.isfile(c) and os.access(c, os.X_OK):
+            return c
+
+    raise FileNotFoundError(
+        "Could not locate MRIcroGL executable. "
+        "Set T2VV_MRICROGL_PATH or install MRIcroGL on PATH. "
+        f"Tried: {ordered}"
+    )
+
+
+def resolve_mricrogl_template_path(template_filename):
+    """Resolve MRIcroGL template path in package or legacy repo locations."""
+    custom_templates_dir = os.environ.get("T2VV_MRICROGL_TEMPLATE_DIR", "").strip()
+    package_templates_dir = os.path.join(os.path.dirname(__file__), "display_scripts", "templates")
+    legacy_templates_dir = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "display_scripts", "templates")
+    )
+
+    candidate_dirs = [custom_templates_dir, package_templates_dir, legacy_templates_dir]
+    tried = []
+    for d in candidate_dirs:
+        if not d:
+            continue
+        p = os.path.join(d, template_filename)
+        tried.append(p)
+        if os.path.exists(p):
+            return p
+
+    raise FileNotFoundError(
+        "MRIcroGL template not found. "
+        f"Template name: {template_filename}. Tried: {tried}"
+    )
+
+
 def _ensure_ras(img):
     ax = nib.aff2axcodes(img.affine)
     if ax != ('R', 'A', 'S'):
@@ -468,11 +535,11 @@ def render_volume_and_save_pngs_mricrogl(
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # Resolve template path inside the installed package
-    templates_dir = os.path.join(os.path.dirname(__file__), 'display_scripts', 'templates')
-    template_path = os.path.join(templates_dir, template_filename)
-    if not os.path.exists(template_path):
-        raise FileNotFoundError(f"MRIcroGL template not found: {template_path}")
+    # Resolve template path from package/legacy/custom locations
+    template_path = resolve_mricrogl_template_path(template_filename)
+
+    # Resolve executable robustly if caller provided default or empty path
+    mricrogl_path = resolve_mricrogl_executable(mricrogl_path)
 
     # Auto-tune camera distance if requested
     if isinstance(camera_distance, str) and camera_distance.strip().lower() == 'auto':
