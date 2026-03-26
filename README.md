@@ -44,8 +44,28 @@ conda activate t2vv
 # (Optional) Point to your MRIcroGL executable (macOS default shown)
 export T2VV_MRICROGL_PATH="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL"
 
-# Show CLI help
+# Show command line help
 python -m t2vesselviewcode.t2_vessel_view_main -h
+```
+
+### If the package asks you to "set a path"
+Copy/paste these commands in Terminal before running the pipeline.
+
+1) Find the MRIcroGL executable (Linux/macOS):
+```bash
+command -v MRIcroGL || command -v mricrogl || command -v MRIcroGL_QT
+```
+
+2) Set MRIcroGL path for the current terminal session:
+```bash
+export T2VV_MRICROGL_PATH="/full/path/from-command-above"
+```
+
+3) Run the pipeline command in the same terminal.
+
+To make these settings permanent, add the `export ...` lines to `~/.bashrc`, then run:
+```bash
+source ~/.bashrc
 ```
 
 ## Usage

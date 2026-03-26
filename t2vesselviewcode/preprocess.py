@@ -11,6 +11,9 @@ from . import utils
 from . import dir_structure
 from . import commandline
 
+# TODO: add CLI option to specify age/infant or not infant re brain size 
+# TODO: possibly add option for rigid registration to template or ac/pc aligment  
+
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
 # ------------------------ Main functions ------------------------
@@ -155,7 +158,7 @@ def preprocess_main_image(input_t1):
     ## this still outputs a "to_ROI" suffix file, find how to stop that
     crop = fsl.RobustFOV()
     crop.inputs.in_file = input_t1
-    crop.inputs.brainsize = 160
+    crop.inputs.brainsize = 180
     ## this doesn't work but there's no documentation for an alternative
     #crop.inputs.generate_report = False
     crop.inputs.out_roi = os.path.join(output_dir, "T1_crop.nii.gz")
