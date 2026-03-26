@@ -183,7 +183,7 @@ def mask_erosions(processed_signed_distance):
     
     
     """
-    erode_depths_list = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 5, 10, 20]
+    erode_depths_list = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5, 5.5, 6, 6.5, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
     ## make list of eroded mask file names?
     eroded_masks_dict = {}
     zero_padded_erode_depths_list = []
