@@ -91,6 +91,50 @@ def run_dependency_preflight():
     print("Dependency preflight checks passed.")
     return True
 
+def _build_cli_overlay_specs():
+    """Build up to two MRIcroGL overlay specs from CLI arguments.
+
+    Overlays are loaded directly in MRIcroGL (not preprocessed/masked by this pipeline).
+    If window min/max are omitted, robust defaults are estimated from the overlay image.
+    """
+    overlays = []
+    for idx in (1, 2):
+        path_val = getattr(commandline.args, f"overlay{idx}_path", None)
+        if not path_val:
+            continue
+
+        if not os.path.exists(path_val):
+            raise FileNotFoundError(f"Overlay {idx} not found: {path_val}")
+
+        color_val = getattr(commandline.args, f"overlay{idx}_color", "jet")
+        min_val = getattr(commandline.args, f"overlay{idx}_min", None)
+        max_val = getattr(commandline.args, f"overlay{idx}_max", None)
+        opacity_val = int(getattr(commandline.args, f"overlay{idx}_opacity", 35))
+
+        if min_val is None or max_val is None:
+            auto_min, auto_max = volume_rendering.compute_series_window(
+                [path_val],
+                low_pct=1.0,
+                high_pct=99.0
+            )
+            min_val = auto_min
+            max_val = auto_max
+            print(
+                f"[WARNING] Overlay {idx} window min/max were not provided. "
+                f"Auto-estimated values are min={min_val}, max={max_val}. "
+                "it is strongly recommended to provide explicit "
+                f"--overlay{idx}-min and --overlay{idx}-max."
+            )
+
+        overlays.append({
+            "path": os.path.abspath(path_val),
+            "color": str(color_val),
+            "min": int(float(min_val)),
+            "max": int(float(max_val)),
+            "opacity": int(opacity_val)
+        })
+    return overlays
+
 
 def main():
     if not run_dependency_preflight():
@@ -119,7 +163,9 @@ def main():
             't2_sag': commandline.args.t2_sag,
             't2_cor': commandline.args.t2_cor,
             't2_tra': commandline.args.t2_tra,
-            'flair': commandline.args.flair
+            'flair': commandline.args.flair,
+            'overlay1': getattr(commandline.args, 'overlay1_path', None),
+            'overlay2': getattr(commandline.args, 'overlay2_path', None)
         }
     )
 
@@ -338,6 +384,7 @@ def main():
     mricrogl_exec = volume_rendering.resolve_mricrogl_executable(
         os.environ.get('T2VV_MRICROGL_PATH', "")
     )
+    overlay_specs = _build_cli_overlay_specs()
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
@@ -368,6 +415,31 @@ def main():
             )
         except Exception as e:
             print(f"[WARNING] PNG post-processing (T1 overview) skipped: {e}")
+        # Optional T1 + overlay rendering (only if at least one overlay was provided)
+        if overlay_specs:
+            try:
+                volume_rendering.render_volume_and_save_pngs_mricrogl(
+                    t1_eroded_files,
+                    dir_structure.renders_t1_overlay_dir,
+                    angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                            [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
+                    window=t1_window,
+                    image_size=(1200,1200),
+                    mricrogl_path=mricrogl_exec,
+                    template_filename="mricrogl_T1_renders.py",
+                    camera_distance='auto',
+                    overlays=overlay_specs
+                )
+                png_postprocess.run_preset_t1_overview_per_depth(
+                    add_orientation_labels=True,
+                    background_rgb=[0,0,0],
+                    threshold=2,
+                    pptx_name="T1_overlay_overview",
+                    render_root_dir=dir_structure.renders_t1_overlay_dir,
+                    modality_label="T1 + Overlay"
+                )
+            except Exception as e:
+                print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
     # T2 Sagittal
     t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
     if t2_sag_eroded_files:

@@ -347,7 +347,14 @@ def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
     print(f"[INFO] Saved PPTX to: {out_global}")
 
 
-def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, background_rgb: List[int] = [0, 0, 0], threshold: int = 2, pptx_name: str = "T1_overview") -> None:
+def run_preset_t1_overview_per_depth(
+    add_orientation_labels: bool = True,
+    background_rgb: List[int] = [0, 0, 0],
+    threshold: int = 2,
+    pptx_name: str = "T1_overview",
+    render_root_dir: str = None,
+    modality_label: str = "T1"
+) -> None:
     """Stitch T1 multi-angle panels per erosion depth and export PPTX.
 
     Workflow:
@@ -361,7 +368,8 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
     - Export all panels to a PPTX (one slide per panel).
     """
     angles = ['left', 'right', 'superior', 'inferior', 'anterior', 'posterior']
-    angle_dirs = [os.path.join(dir_structure.renders_t1_dir, 'by_angle', a) for a in angles]
+    base_render_root = render_root_dir or dir_structure.renders_t1_dir
+    angle_dirs = [os.path.join(base_render_root, 'by_angle', a) for a in angles]
 
     # Ensure directories exist and have PNGs; enforce equal counts across angles
     dir_pngs = [_list_pngs(d) for d in angle_dirs]
@@ -389,8 +397,8 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
                     copyfile(p, out)
                 except Exception:
                     continue
-            # Always add modality label for T1
-            annotate_modality_center_bottom(out, out, 'T1')
+            # Always add modality label
+            annotate_modality_center_bottom(out, out, modality_label)
             ann_paths.append(out)
         cropped_lists.append(sorted(ann_paths))
 
@@ -398,7 +406,7 @@ def run_preset_t1_overview_per_depth(add_orientation_labels: bool = True, backgr
     angle_to_list = {ang: lst for ang, lst in zip(angles, cropped_lists)}
 
     # Output directory for stitched panels
-    out_panel_dir = os.path.join(dir_structure.renders_t1_dir, 'stitched_overview')
+    out_panel_dir = os.path.join(base_render_root, 'stitched_overview')
     _ensure_dir(out_panel_dir)
 
     # Build two-row layout if all required angles present; else fallback to one-row

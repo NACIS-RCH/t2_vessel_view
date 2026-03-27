@@ -495,7 +495,8 @@ def render_volume_and_save_pngs_mricrogl(
     image_size=(1200, 1200),
     mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
     template_filename="mricrogl_T1_renders.py",
-    camera_distance=0.6
+    camera_distance=0.6,
+    overlays=None
 ):
     """
     Render volumes using MRIcroGL by generating a temporary gl script from a template.
@@ -522,6 +523,9 @@ def render_volume_and_save_pngs_mricrogl(
         Template script filename located under display_scripts/templates/ within the package.
     camera_distance : float
         Camera distance to use (>0 applies; smaller is closer). Set <=0 to skip.
+    overlays : list[dict] | None
+        Optional list of overlay specifications loaded directly by MRIcroGL.
+        Each item can include: path, color, min, max, opacity.
     """
     if angles is None:
         angles = [
@@ -593,6 +597,7 @@ def render_volume_and_save_pngs_mricrogl(
         window_literal = f"[{int(window[0])}, {int(window[1])}]"
         view_literal = f"[{int(image_size[0])}, {int(image_size[1])}]"
         camera_literal = f"{float(camera_distance)}" if camera_distance and camera_distance > 0 else "-1"
+        overlays_literal = repr(overlays if overlays is not None else [])
 
         script_text = tpl
         script_text = script_text.replace('__IMAGELIST__', img_list_literal)
@@ -601,6 +606,7 @@ def render_volume_and_save_pngs_mricrogl(
         script_text = script_text.replace('__WINDOW__', window_literal)
         script_text = script_text.replace('__VIEW_SIZE__', view_literal)
         script_text = script_text.replace('__CAMERA_DISTANCE__', camera_literal)
+        script_text = script_text.replace('__OVERLAYS__', overlays_literal)
 
         # Write temp script
         tmp_script = os.path.join(tmp_root, 'mricrogl_run.py')

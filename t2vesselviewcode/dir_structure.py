@@ -33,6 +33,9 @@ renders_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png")
 renders_t1_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders")
 renders_t1_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level")
 renders_t1_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders/by_angle")
+renders_t1_overlay_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_overlay_3D_renders")
+renders_t1_overlay_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_overlay_3D_renders/by_erode_level")
+renders_t1_overlay_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_overlay_3D_renders/by_angle")
 renders_t2_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders")
 renders_t2_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level")
 renders_t2_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle")
@@ -63,6 +66,9 @@ directory_structure = [
     renders_t1_dir,
     renders_t1_erode_dir,
     renders_t1_angle_dir,
+    renders_t1_overlay_dir,
+    renders_t1_overlay_erode_dir,
+    renders_t1_overlay_angle_dir,
     renders_t2_dir,
     renders_t2_erode_dir,
     renders_t2_angle_dir

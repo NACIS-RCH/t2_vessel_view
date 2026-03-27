@@ -104,10 +104,105 @@ parser.add_argument('--auto-mask-method',
             default='bet',
             dest='auto_mask_method')
 
+# Optional MRIcroGL overlays (registered to T1; rendered directly in MRIcroGL)
+parser.add_argument('--overlay1-path',
+            metavar='overlay1_path',
+            type=str,
+            action='store',
+            help='Optional path to first overlay image registered to T1 (e.g., PET_to_T1). If omitted, overlay rendering is skipped.',
+            dest='overlay1_path')
+
+parser.add_argument('--overlay1-color',
+            metavar='overlay1_color',
+            type=str,
+            action='store',
+            help='MRIcroGL colorname for first overlay (for example: jet, red, blue, hot).',
+            default='jet',
+            dest='overlay1_color')
+
+parser.add_argument('--overlay1-min',
+            metavar='overlay1_min',
+            type=float,
+            action='store',
+            help='Optional minimum window value for first overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay1_min')
+
+parser.add_argument('--overlay1-max',
+            metavar='overlay1_max',
+            type=float,
+            action='store',
+            help='Optional maximum window value for first overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay1_max')
+
+parser.add_argument('--overlay1-opacity',
+            metavar='overlay1_opacity',
+            type=int,
+            action='store',
+            help='Opacity for first overlay layer (0-100). Default: 35.',
+            default=35,
+            dest='overlay1_opacity')
+
+parser.add_argument('--overlay2-path',
+            metavar='overlay2_path',
+            type=str,
+            action='store',
+            help='Optional path to second overlay image registered to T1.',
+            dest='overlay2_path')
+
+parser.add_argument('--overlay2-color',
+            metavar='overlay2_color',
+            type=str,
+            action='store',
+            help='MRIcroGL colorname for second overlay.',
+            default='red',
+            dest='overlay2_color')
+
+parser.add_argument('--overlay2-min',
+            metavar='overlay2_min',
+            type=float,
+            action='store',
+            help='Optional minimum window value for second overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay2_min')
+
+parser.add_argument('--overlay2-max',
+            metavar='overlay2_max',
+            type=float,
+            action='store',
+            help='Optional maximum window value for second overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay2_max')
+
+parser.add_argument('--overlay2-opacity',
+            metavar='overlay2_opacity',
+            type=int,
+            action='store',
+            help='Opacity for second overlay layer (0-100). Default: 35.',
+            default=35,
+            dest='overlay2_opacity')
+
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
 ## add flags for save masks or not
 
 args = parser.parse_args()
+
+# Basic CLI validation for overlay parameters
+for overlay_idx in (1, 2):
+    path_val = getattr(args, f'overlay{overlay_idx}_path', None)
+    min_val = getattr(args, f'overlay{overlay_idx}_min', None)
+    max_val = getattr(args, f'overlay{overlay_idx}_max', None)
+    opacity_val = getattr(args, f'overlay{overlay_idx}_opacity', 35)
+
+    if opacity_val is not None and not (0 <= int(opacity_val) <= 100):
+        parser.error(f'--overlay{overlay_idx}-opacity must be between 0 and 100.')
+
+    # If user provided one bound, require both so intent is explicit.
+    if path_val and ((min_val is None) ^ (max_val is None)):
+        parser.error(
+            f'--overlay{overlay_idx}-min and --overlay{overlay_idx}-max must be provided together, '
+            f'or both omitted for automatic estimation.'
+        )
+
+    if path_val and min_val is not None and max_val is not None and float(max_val) <= float(min_val):
+        parser.error(f'--overlay{overlay_idx}-max must be greater than --overlay{overlay_idx}-min.')
 
 
