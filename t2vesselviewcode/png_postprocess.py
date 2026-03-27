@@ -180,6 +180,27 @@ def _draw_text_with_outline(draw: ImageDraw.Draw, xy: Tuple[int, int], text: str
     draw.text((x, y), text, font=font, fill=fill)
 
 
+def _load_annotation_font(font_size: int):
+    """Load a scalable annotation font with cross-platform fallbacks.
+
+    Preference order keeps current macOS behavior (Arial first), while adding
+    common Linux fonts to avoid tiny bitmap fallback text.
+    """
+    candidates = [
+        "Arial.ttf",                # Common on macOS/Windows
+        "DejaVuSans-Bold.ttf",      # Common on Linux
+        "DejaVuSans.ttf",           # Common on Linux
+        "LiberationSans-Bold.ttf",  # Common on Linux
+        "LiberationSans-Regular.ttf",
+    ]
+    for font_name in candidates:
+        try:
+            return ImageFont.truetype(font_name, font_size)
+        except Exception:
+            continue
+    return ImageFont.load_default()
+
+
 def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: str) -> None:
     """Annotate a PNG with a modality label centered at the bottom edge.
 
@@ -192,10 +213,7 @@ def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: 
     w, h = img.size
 
     font_size = max(14, int(h * 0.045))
-    try:
-        font = ImageFont.truetype("Arial.ttf", font_size)
-    except Exception:
-        font = ImageFont.load_default()
+    font = _load_annotation_font(font_size)
 
     # Measure text to center precisely
     try:
@@ -224,10 +242,7 @@ def annotate_lr_on_png(path_in: str, path_out: str) -> None:
 
     # Heuristic font size ~5% of image height (min 16 px)
     font_size = max(16, int(h * 0.05))
-    try:
-        font = ImageFont.truetype("Arial.ttf", font_size)
-    except Exception:
-        font = ImageFont.load_default()
+    font = _load_annotation_font(font_size)
 
     # Place labels near left and right edges with a small margin
     margin = max(8, int(w * 0.02))
@@ -252,10 +267,7 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
     w, h = img.size
 
     font_size = max(16, int(h * 0.05))
-    try:
-        font = ImageFont.truetype("Arial.ttf", font_size)
-    except Exception:
-        font = ImageFont.load_default()
+    font = _load_annotation_font(font_size)
 
     margin = max(8, int(w * 0.02))
 
