@@ -96,6 +96,20 @@ def main():
     if not run_dependency_preflight():
         sys.exit(1)
 
+    auto_method = getattr(commandline.args, "auto_mask_method", "bet")
+
+    # User-friendly rule: FLAIR is optional for BET, required for watershed.
+    if auto_method == "watershed" and not commandline.args.flair:
+        print(
+            "[ERROR] You selected --auto-mask-method watershed, but no FLAIR image was provided with -f. "
+            "Please provide a FLAIR image or rerun with --auto-mask-method bet."
+        )
+        sys.exit(1)
+    if auto_method == "bet" and not commandline.args.flair:
+        print(
+            "[INFO] No FLAIR image provided. Continuing with BET automatic mask generation using the T1 image."
+        )
+
     # Validate input files before processing
     print("Validating input files...")
     is_valid, errors = input_validation.validate_input_files(
@@ -212,7 +226,6 @@ def main():
         postprocessed_t2_3d_image = preprocess.postprocess_t2(preprocessed_t2_3d_path, "t2_3d")
 
     ## generate automatic mask for QA (and for processing if no user mask is supplied)
-    auto_method = getattr(commandline.args, "auto_mask_method", "bet")
     mask_source_path = preprocessed_flair or preprocessed_main_image_path
     auto_mask_path = ""
     auto_mask_exists = False

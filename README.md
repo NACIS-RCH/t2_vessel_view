@@ -73,6 +73,13 @@ source ~/.bashrc
 ```bash
 python -m t2vesselviewcode.t2_vessel_view_main \
   -d /path/to/mri_dir \
+  -i /path/to/T1_raw.nii.gz
+```
+
+### Minimal run with optional FLAIR
+```bash
+python -m t2vesselviewcode.t2_vessel_view_main \
+  -d /path/to/mri_dir \
   -i /path/to/T1_raw.nii.gz \
   -f /path/to/FLAIR.nii.gz
 ```
@@ -101,7 +108,8 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 ```
 
 ## Inputs
-- **Required**: `-d` MRI directory, `-i` T1 (main structural), `-f` FLAIR (3D)
+- **Required**: `-d` MRI directory, `-i` T1 (main structural)
+- **Optional**: `-f` FLAIR (3D). Required only when `--auto-mask-method watershed` is used.
 - **Optional**: `-s` T2 sagittal, `-c` T2 coronal, `-t` T2 transverse, `--t2_sag_left`, `--t2_sag_right`, `-p` 3D T2, `-m` user mask, `-n` mask structural, `--use-hull-mask`
 
 

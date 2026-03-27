@@ -30,8 +30,7 @@ parser.add_argument('-f',
             metavar='flair', 
             type=str, 
             action='store', 
-            help='3D FLAIR or similar bright 3D image such as Mag',
-            required=True,
+            help='Optional 3D FLAIR or similar bright 3D image such as Mag.This will usually substantially help with segmentation of the brain parenchyma (FLAIR) and intracranial structures including venous sinuses (Mag). Also needed if you want to run the flair watershed segmentation option.',
             dest='flair')
 
 parser.add_argument('-c', 
