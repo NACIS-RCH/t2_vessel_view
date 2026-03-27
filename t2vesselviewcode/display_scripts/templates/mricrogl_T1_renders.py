@@ -29,6 +29,14 @@ VIEW_SIZE = __VIEW_SIZE__  # type: ignore # e.g., [1200, 1200]
 
 # Optional camera distance (float). Smaller = closer. If not desired, set to -1.
 CAMERA_DISTANCE = __CAMERA_DISTANCE__  # type: ignore # e.g., 0.6
+
+# Optional overlays loaded directly by MRIcroGL.
+# Format:
+# OVERLAYS = [
+#   {'path': '/abs/PET_to_T1.nii.gz', 'color': 'jet', 'min': 2000, 'max': 23000, 'opacity': 35},
+#   {'path': '/abs/other_overlay.nii.gz', 'color': 'red', 'min': 10, 'max': 120, 'opacity': 40},
+# ]
+OVERLAYS = __OVERLAYS__  # type: ignore
 # -----------------------------------------------------------------------------------
 
 # Ensure base output and per-angle subfolders exist
@@ -88,6 +96,23 @@ for i in IMAGELIST:
 
     gl.hiddenbycutout(layer_number, 1)
     gl.opacity(layer_number, 100)
+
+    # Optional overlays: stack each overlay as a new layer over the base T1.
+    if isinstance(OVERLAYS, list):
+        for ov in OVERLAYS:
+            try:
+                ov_path = ov.get('path', '')
+                if not ov_path:
+                    continue
+                layer_number = layer_number + 1
+                gl.overlayload(str(ov_path))
+                gl.hiddenbycutout(layer_number, 1)
+                gl.opacity(layer_number, int(ov.get('opacity', 35)))
+                gl.colorname(layer_number, str(ov.get('color', 'jet')))
+                gl.minmax(layer_number, int(ov.get('min', 0)), int(ov.get('max', 1000)))
+            except Exception:
+                # Keep rendering even if one overlay entry fails.
+                pass
 
     # Save screenshots at specified angles
     base = os.path.splitext(os.path.basename(i))[0]
