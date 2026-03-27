@@ -561,17 +561,31 @@ def main():
             camera_distance='auto'
         )
 
+    # --- Multimodal presets only when at least one non-T1 modality was provided ---
+    has_additional_modalities = any([
+        bool(commandline.args.flair),
+        bool(commandline.args.t2_sag),
+        bool(getattr(commandline.args, 't2_sag_left', None)),
+        bool(getattr(commandline.args, 't2_sag_right', None)),
+        bool(commandline.args.t2_cor),
+        bool(commandline.args.t2_tra),
+        bool(commandline.args.t2_3d),
+    ])
+
     # --- Multimodal by-angle preset (one combined PPTX) ---
-    try:
-        png_postprocess.run_preset_multimodal_by_angle_per_depth(
-            angles=['superior','inferior','left','right','anterior','posterior'],
-            add_orientation_labels=True,
-            background_rgb=[0,0,0],
-            threshold=2,
-            pptx_name="Multimodal_overview"
-        )
-    except Exception as e:
-        print(f"[WARNING] PNG post-processing (multimodal by angle) skipped: {e}")
+    if has_additional_modalities:
+        try:
+            png_postprocess.run_preset_multimodal_by_angle_per_depth(
+                angles=['superior','inferior','left','right','anterior','posterior'],
+                add_orientation_labels=True,
+                background_rgb=[0,0,0],
+                threshold=2,
+                pptx_name="Multimodal_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (multimodal by angle) skipped: {e}")
+    else:
+        print("[INFO] Skipping multimodal overview preset: no FLAIR/T2 inputs were provided.")
 
     # --- T2-only overview (two-row if complete, else single-row) ---
     try:
@@ -585,16 +599,19 @@ def main():
         print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
 
     # --- Multimodal surgical angles ---
-    try:
-        png_postprocess.run_preset_multimodal_other_angles_per_depth(
-            angles=['surg_left_lat','surg_right_lat','surg_left_ato','surg_right_ato'],
-            add_orientation_labels=True,
-            background_rgb=[0,0,0],
-            threshold=2,
-            pptx_name="multimodal_overview_other_angles"
-        )
-    except Exception as e:
-        print(f"[WARNING] PNG post-processing (multimodal other angles) skipped: {e}")
+    if has_additional_modalities:
+        try:
+            png_postprocess.run_preset_multimodal_other_angles_per_depth(
+                angles=['surg_left_lat','surg_right_lat','surg_left_ato','surg_right_ato'],
+                add_orientation_labels=True,
+                background_rgb=[0,0,0],
+                threshold=2,
+                pptx_name="multimodal_overview_other_angles"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (multimodal other angles) skipped: {e}")
+    else:
+        print("[INFO] Skipping multimodal surgical preset: no FLAIR/T2 inputs were provided.")
 
     return 0
 
