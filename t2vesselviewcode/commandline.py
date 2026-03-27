@@ -120,6 +120,14 @@ parser.add_argument('--overlay1-color',
             default='jet',
             dest='overlay1_color')
 
+parser.add_argument('--overlay1-name',
+            metavar='overlay1_name',
+            type=str,
+            action='store',
+            help='Optional short label for first overlay used in stitched PNG text (for example: PET). Use no spaces.',
+            default='Overlay1',
+            dest='overlay1_name')
+
 parser.add_argument('--overlay1-min',
             metavar='overlay1_min',
             type=float,
@@ -131,7 +139,7 @@ parser.add_argument('--overlay1-max',
             metavar='overlay1_max',
             type=float,
             action='store',
-            help='Optional maximum window value for first overlay. Strongly recommended to set explicitly for clinical use.',
+            help='Optional maximum window value for first overlay. Strongly recommended to set explicitl.',
             dest='overlay1_max')
 
 parser.add_argument('--overlay1-opacity',
@@ -156,6 +164,14 @@ parser.add_argument('--overlay2-color',
             help='MRIcroGL colorname for second overlay.',
             default='red',
             dest='overlay2_color')
+
+parser.add_argument('--overlay2-name',
+            metavar='overlay2_name',
+            type=str,
+            action='store',
+            help='Optional short label for second overlay used in stitched PNG text (for example: CBF). Use no spaces.',
+            default='Overlay2',
+            dest='overlay2_name')
 
 parser.add_argument('--overlay2-min',
             metavar='overlay2_min',
@@ -188,6 +204,7 @@ args = parser.parse_args()
 # Basic CLI validation for overlay parameters
 for overlay_idx in (1, 2):
     path_val = getattr(args, f'overlay{overlay_idx}_path', None)
+    name_val = getattr(args, f'overlay{overlay_idx}_name', f'Overlay{overlay_idx}')
     min_val = getattr(args, f'overlay{overlay_idx}_min', None)
     max_val = getattr(args, f'overlay{overlay_idx}_max', None)
     opacity_val = getattr(args, f'overlay{overlay_idx}_opacity', 35)
@@ -204,5 +221,8 @@ for overlay_idx in (1, 2):
 
     if path_val and min_val is not None and max_val is not None and float(max_val) <= float(min_val):
         parser.error(f'--overlay{overlay_idx}-max must be greater than --overlay{overlay_idx}-min.')
+
+    if path_val and name_val and any(ch.isspace() for ch in str(name_val)):
+        parser.error(f'--overlay{overlay_idx}-name please specify a name without spaces.')
 
 

@@ -98,6 +98,7 @@ def _build_cli_overlay_specs():
     If window min/max are omitted, robust defaults are estimated from the overlay image.
     """
     overlays = []
+    overlay_names = []
     for idx in (1, 2):
         path_val = getattr(commandline.args, f"overlay{idx}_path", None)
         if not path_val:
@@ -107,6 +108,7 @@ def _build_cli_overlay_specs():
             raise FileNotFoundError(f"Overlay {idx} not found: {path_val}")
 
         color_val = getattr(commandline.args, f"overlay{idx}_color", "jet")
+        name_val = getattr(commandline.args, f"overlay{idx}_name", f"Overlay{idx}")
         min_val = getattr(commandline.args, f"overlay{idx}_min", None)
         max_val = getattr(commandline.args, f"overlay{idx}_max", None)
         opacity_val = int(getattr(commandline.args, f"overlay{idx}_opacity", 35))
@@ -133,7 +135,8 @@ def _build_cli_overlay_specs():
             "max": int(float(max_val)),
             "opacity": int(opacity_val)
         })
-    return overlays
+        overlay_names.append(str(name_val))
+    return overlays, overlay_names
 
 
 def main():
@@ -384,7 +387,7 @@ def main():
     mricrogl_exec = volume_rendering.resolve_mricrogl_executable(
         os.environ.get('T2VV_MRICROGL_PATH', "")
     )
-    overlay_specs = _build_cli_overlay_specs()
+    overlay_specs, overlay_names = _build_cli_overlay_specs()
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
@@ -436,7 +439,7 @@ def main():
                     threshold=2,
                     pptx_name="T1_overlay_overview",
                     render_root_dir=dir_structure.renders_t1_overlay_dir,
-                    modality_label="T1 + Overlay"
+                    modality_label="T1 + " + " + ".join(overlay_names)
                 )
             except Exception as e:
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
