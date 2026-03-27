@@ -2,7 +2,7 @@
 PNG post-processing utilities for cropping, annotating, stitching, and PPTX export.
 
 Provenance: This module ports the behavior of the legacy `screenshot_stitcher.py`
-(used clinically) into package functions so the pipeline can call them directly.
+into package functions so the pipeline can call them directly.
 
 Design goals (MVP):
 - Preserve EXACT cropping behavior using pyvips.find_trim (threshold/background).
@@ -16,7 +16,7 @@ Downstream: more presets (multimodal per angle), richer labels (S/I/A/P), DPI tu
 import os
 import glob
 import re
-from typing import List, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import pyvips
 from PIL import Image as PILImage, ImageDraw, ImageFont
@@ -32,18 +32,60 @@ def _ensure_dir(path: str) -> None:
 
 
 def _extract_depth_from_basename(basename: str) -> str:
-    """Extract leading zero-padded erosion depth from a filename.
+    """Extract erosion depth from a filename using '<depth>_eroded'.
 
-    Example: '030_eroded_t1_something.png' -> '030'. Used to sort slides.
+    Example: 'right-270-0-030_eroded_t1.png' -> '030'. Used to sort slides.
     Returns '000' if not found (safe default).
     """
-    m = re.match(r"^(\d+)_", basename)
+    m = re.search(r"(\d+)_eroded", basename)
     return m.group(1) if m else "000"
 
 
 def _list_pngs(directory: str) -> List[str]:
     """List all PNGs in a directory, sorted alphabetically."""
     return sorted(glob.glob(os.path.join(directory, '*.png')))
+
+
+def _extract_erode_prefix_or_none(basename: str) -> Optional[str]:
+    """Extract zero-padded erosion prefix from '<prefix>_eroded' in filename.
+
+    Returns None when the filename does not contain an erosion prefix and should
+    be excluded from prefix-based stitching logic.
+    """
+    m = re.search(r"(\d+)_eroded", basename)
+    if not m:
+        return None
+    return str(m.group(1)).zfill(3)
+
+
+def _build_prefix_map(paths: List[str]) -> Dict[str, str]:
+    """Build mapping: erosion prefix -> file path (eligible files only)."""
+    out: Dict[str, str] = {}
+    for p in sorted(paths):
+        prefix = _extract_erode_prefix_or_none(os.path.basename(p))
+        if prefix is None:
+            continue
+        # Keep first deterministic entry if duplicates exist for a prefix.
+        if prefix not in out:
+            out[prefix] = p
+    return out
+
+
+def _common_prefixes_across_maps(prefix_maps: List[Dict[str, str]]) -> List[str]:
+    """Return numerically sorted erosion prefixes common to all maps."""
+    if not prefix_maps:
+        return []
+    common: Set[str] = set(prefix_maps[0].keys())
+    for mp in prefix_maps[1:]:
+        common &= set(mp.keys())
+    return sorted(common, key=lambda x: int(x))
+
+
+def _log_skipped_prefixes(context: str, all_prefixes: Set[str], common_prefixes: List[str]) -> None:
+    """Print an info line showing skipped erosion prefixes for transparency."""
+    skipped = sorted(set(all_prefixes) - set(common_prefixes), key=lambda x: int(x))
+    if skipped:
+        print(f"[INFO] {context}: skipped erosion prefixes missing in one or more required folders: {', '.join(skipped)}")
 
 
 def get_crop_dimensions(images: List[str], background_colour: List[int], threshold: int = 2, padding_px: int = 6) -> Tuple[int, int, int, int]:
@@ -371,11 +413,23 @@ def run_preset_t1_overview_per_depth(
     base_render_root = render_root_dir or dir_structure.renders_t1_dir
     angle_dirs = [os.path.join(base_render_root, 'by_angle', a) for a in angles]
 
-    # Ensure directories exist and have PNGs; enforce equal counts across angles
-    dir_pngs = [_list_pngs(d) for d in angle_dirs]
-    if not all(dir_pngs) or not all(len(p) == len(dir_pngs[0]) for p in dir_pngs):
-        print("[WARNING] T1 overview preset skipped: angle folders missing or file counts unequal")
+    # Build erosion-prefix maps for each required angle and keep only shared prefixes.
+    prefix_maps = []
+    all_prefixes: Set[str] = set()
+    for angle, d in zip(angles, angle_dirs):
+        mp = _build_prefix_map(_list_pngs(d))
+        if not mp:
+            print(f"[WARNING] T1 overview preset skipped: no eligible '*_eroded*' PNGs found for angle '{angle}'")
+            return
+        prefix_maps.append(mp)
+        all_prefixes.update(mp.keys())
+
+    common_prefixes = _common_prefixes_across_maps(prefix_maps)
+    if not common_prefixes:
+        print("[WARNING] T1 overview preset skipped: no shared erosion prefixes across required angles")
         return
+    _log_skipped_prefixes("T1 overview", all_prefixes, common_prefixes)
+    dir_pngs = [[mp[pfx] for pfx in common_prefixes] for mp in prefix_maps]
 
     # Crop per angle folder and annotate overlays, preserving order per depth
     cropped_lists = []
@@ -409,21 +463,11 @@ def run_preset_t1_overview_per_depth(
     out_panel_dir = os.path.join(base_render_root, 'stitched_overview')
     _ensure_dir(out_panel_dir)
 
-    # Build two-row layout if all required angles present; else fallback to one-row
-    required_top = ['left', 'right']
-    required_bottom = ['superior', 'inferior', 'anterior', 'posterior']
-    have_all = all(a in angle_to_list for a in required_top + required_bottom)
-
-    n = len(cropped_lists[0])
-
-    if have_all:
-        top_lists = [angle_to_list['left'], angle_to_list['right']]
-        bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
-        concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
-    else:
-        # Safe fallback if any angle is missing: keep a single-row panel in the original order
-        print("[WARNING] Missing one or more angles for two-row T1 overview; falling back to single-row stitching")
-        concat_one_row(n, cropped_lists, out_panel_dir)
+    # Require all six angles (already enforced above) and stitch two rows.
+    n = len(common_prefixes)
+    top_lists = [angle_to_list['left'], angle_to_list['right']]
+    bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
+    concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
 
     # Export PPTX with one slide per stitched panel
     export_pptx_from_folder(out_panel_dir, pptx_name) 
@@ -500,17 +544,31 @@ def run_preset_multimodal_by_angle_per_depth(
             print(f"[WARNING] Skipping angle '{angle}': insufficient inputs")
             continue
 
-        # Enforce equal file counts across selected dirs
-        counts = [len(pngs) for _, pngs in valid_dirs]
-        if any(c != counts[0] for c in counts):
-            print(f"[WARNING] Skipping angle '{angle}': unequal PNG counts across inputs")
+        # Keep only erosion prefixes shared across all participating modalities.
+        prefix_maps = []
+        all_prefixes: Set[str] = set()
+        for _, pngs in valid_dirs:
+            mp = _build_prefix_map(pngs)
+            if not mp:
+                prefix_maps = []
+                break
+            prefix_maps.append(mp)
+            all_prefixes.update(mp.keys())
+        if not prefix_maps:
+            print(f"[WARNING] Skipping angle '{angle}': no eligible '*_eroded*' PNGs")
             continue
+        common_prefixes = _common_prefixes_across_maps(prefix_maps)
+        if not common_prefixes:
+            print(f"[WARNING] Skipping angle '{angle}': no shared erosion prefixes across participating modalities")
+            continue
+        _log_skipped_prefixes(f"Multimodal by-angle ({angle})", all_prefixes, common_prefixes)
 
         # Crop and annotate per directory
         cropped_lists = []
-        for d, pngs in valid_dirs:
-            dims = get_crop_dimensions(pngs, background_rgb, threshold)
-            cropped = crop_image_series(pngs, d, dims)
+        for (d, pngs), prefix_map in zip(valid_dirs, prefix_maps):
+            selected_pngs = [prefix_map[pfx] for pfx in common_prefixes]
+            dims = get_crop_dimensions(selected_pngs, background_rgb, threshold)
+            cropped = crop_image_series(selected_pngs, d, dims)
             annotated_dir = os.path.join(d, '1_cropped_annotated')
             _ensure_dir(annotated_dir)
             ann_paths = []
@@ -538,7 +596,7 @@ def run_preset_multimodal_by_angle_per_depth(
         # Stitch a single-row panel for this angle
         out_panel_dir = os.path.join(panels_root, angle_dir_name)
         _ensure_dir(out_panel_dir)
-        n = len(cropped_lists[0])
+        n = len(common_prefixes)
         concat_one_row(n, cropped_lists, out_panel_dir)
         per_angle_panel_folders.append(out_panel_dir)
 
@@ -610,16 +668,29 @@ def run_preset_t2_overview_per_depth(
         if chosen:
             resolved_dirs[angle] = chosen
 
-    # If nothing usable, return early
-    if not resolved_dirs:
-        print("[WARNING] T2 overview preset skipped: no T2 renders found")
+    # Require all six angles for T2 overview.
+    missing_angles = [a for a in angles if a not in resolved_dirs]
+    if missing_angles:
+        print(f"[WARNING] T2 overview preset skipped: missing required angle folders: {', '.join(missing_angles)}")
         return
 
-    # Gather PNG lists in the canonical angles order, skip missing
-    angle_order = [a for a in angles if a in resolved_dirs]
-    dir_pngs = [_list_pngs(resolved_dirs[a]) for a in angle_order]
-    if not all(dir_pngs) or not all(len(p) == len(dir_pngs[0]) for p in dir_pngs):
-        print("[WARNING] T2 overview preset: angle folders missing or file counts unequal; will fallback to single-row if needed")
+    # Build erosion-prefix maps for each required angle and keep only shared prefixes.
+    angle_order = angles
+    prefix_maps = []
+    all_prefixes: Set[str] = set()
+    for angle in angle_order:
+        mp = _build_prefix_map(_list_pngs(resolved_dirs[angle]))
+        if not mp:
+            print(f"[WARNING] T2 overview preset skipped: no eligible '*_eroded*' PNGs for angle '{angle}'")
+            return
+        prefix_maps.append(mp)
+        all_prefixes.update(mp.keys())
+    common_prefixes = _common_prefixes_across_maps(prefix_maps)
+    if not common_prefixes:
+        print("[WARNING] T2 overview preset skipped: no shared erosion prefixes across required angles")
+        return
+    _log_skipped_prefixes("T2 overview", all_prefixes, common_prefixes)
+    dir_pngs = [[mp[pfx] for pfx in common_prefixes] for mp in prefix_maps]
 
     # Crop and annotate per resolved angle folder
     cropped_lists = []
@@ -647,20 +718,12 @@ def run_preset_t2_overview_per_depth(
     out_panel_dir = os.path.join(dir_structure.renders_t2_dir, 'stitched_overview')
     _ensure_dir(out_panel_dir)
 
-    # Build two-row layout if we have all six required angles; else fallback to one-row
+    # Build two-row layout (all six required angles were enforced above).
     angle_to_list = {ang: lst for ang, lst in zip(angle_order, cropped_lists)}
-    required_top = ['left', 'right']
-    required_bottom = ['superior', 'inferior', 'anterior', 'posterior']
-    have_all = all(a in angle_to_list for a in required_top + required_bottom)
-    n = len(cropped_lists[0]) if cropped_lists else 0
-
-    if have_all:
-        top_lists = [angle_to_list['left'], angle_to_list['right']]
-        bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
-        concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
-    else:
-        print("[WARNING] Missing one or more angles for two-row T2 overview; falling back to single-row stitching")
-        concat_one_row(n, cropped_lists, out_panel_dir)
+    n = len(common_prefixes)
+    top_lists = [angle_to_list['left'], angle_to_list['right']]
+    bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
+    concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
 
     export_pptx_from_folder(out_panel_dir, pptx_name)
 
@@ -707,15 +770,30 @@ def run_preset_multimodal_other_angles_per_depth(
             print(f"[WARNING] Skipping angle '{angle}': insufficient inputs")
             continue
 
-        counts = [len(pngs) for _, pngs in valid_dirs]
-        if any(c != counts[0] for c in counts):
-            print(f"[WARNING] Skipping angle '{angle}': unequal PNG counts across inputs")
+        # Keep only erosion prefixes shared across all participating modalities.
+        prefix_maps = []
+        all_prefixes: Set[str] = set()
+        for _, pngs in valid_dirs:
+            mp = _build_prefix_map(pngs)
+            if not mp:
+                prefix_maps = []
+                break
+            prefix_maps.append(mp)
+            all_prefixes.update(mp.keys())
+        if not prefix_maps:
+            print(f"[WARNING] Skipping angle '{angle}': no eligible '*_eroded*' PNGs")
             continue
+        common_prefixes = _common_prefixes_across_maps(prefix_maps)
+        if not common_prefixes:
+            print(f"[WARNING] Skipping angle '{angle}': no shared erosion prefixes across participating modalities")
+            continue
+        _log_skipped_prefixes(f"Multimodal surgical ({angle})", all_prefixes, common_prefixes)
 
         cropped_lists = []
-        for d, pngs in valid_dirs:
-            dims = get_crop_dimensions(pngs, background_rgb, threshold)
-            cropped = crop_image_series(pngs, d, dims)
+        for (d, pngs), prefix_map in zip(valid_dirs, prefix_maps):
+            selected_pngs = [prefix_map[pfx] for pfx in common_prefixes]
+            dims = get_crop_dimensions(selected_pngs, background_rgb, threshold)
+            cropped = crop_image_series(selected_pngs, d, dims)
             annotated_dir = os.path.join(d, '1_cropped_annotated')
             _ensure_dir(annotated_dir)
             ann_paths = []
@@ -741,7 +819,7 @@ def run_preset_multimodal_other_angles_per_depth(
 
         out_panel_dir = os.path.join(panels_root, angle_dir)
         _ensure_dir(out_panel_dir)
-        n = len(cropped_lists[0])
+        n = len(common_prefixes)
         concat_one_row(n, cropped_lists, out_panel_dir)
         per_angle_panel_folders.append(out_panel_dir)
 
