@@ -16,6 +16,7 @@ Downstream: more presets (multimodal per angle), richer labels (S/I/A/P), DPI tu
 import os
 import glob
 import re
+import hashlib
 from typing import Dict, List, Optional, Set, Tuple
 
 import pyvips
@@ -372,6 +373,48 @@ def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
     from_top = Inches(0.3)
     width_inside = Inches(38 - 0.6)
     height_inside = Inches(22 - 0.6)
+
+    def _png_content_signature(path: str) -> Optional[Tuple[int, int, str]]:
+        """Return deterministic content signature for a PNG, or None on failure."""
+        try:
+            with PILImage.open(path) as im:
+                rgb = im.convert('RGB')
+                w, h = rgb.size
+                payload = rgb.tobytes()
+            digest = hashlib.sha256(payload).hexdigest()
+            return (w, h, digest)
+        except Exception:
+            return None
+
+    def _dedupe_consecutive_concat_pngs(target_folder: str) -> int:
+        """Delete consecutive duplicate concat_*.png files, keeping the first in each run."""
+        paths = sorted(glob.glob(os.path.join(target_folder, 'concat_*.png')))
+        if len(paths) < 2:
+            return 0
+
+        removed = 0
+        prev_sig: Optional[Tuple[int, int, str]] = None
+        for idx, p in enumerate(paths):
+            sig = _png_content_signature(p)
+            if sig is None:
+                prev_sig = None
+                continue
+            if idx > 0 and prev_sig is not None and sig == prev_sig:
+                try:
+                    os.remove(p)
+                    removed += 1
+                    continue
+                except Exception:
+                    pass
+            prev_sig = sig
+        return removed
+
+    removed_count = _dedupe_consecutive_concat_pngs(folder)
+    if removed_count > 0:
+        print(
+            f"[INFO] Removed {removed_count} consecutive duplicate stitched PNG(s) "
+            f"before PPTX export for '{pptx_basename}'."
+        )
 
     images = sorted(glob.glob(os.path.join(folder, 'concat_*.png')))
     for path in images:
