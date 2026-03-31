@@ -637,6 +637,102 @@ def render_volume_and_save_pngs_mricrogl(
         except Exception:
             pass
 
+
+def render_quant_map_mm_panel_slices_mricrogl(
+    nifti_paths,
+    output_dir,
+    overlays,
+    window=(0, 1000),
+    main_erode_prefix="030",
+    mricrogl_path="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL",
+    template_filename="mricrogl_quant_map_mm_panel_slices.py",
+    camera_distance=0.7,
+    slice_z_start=5,
+    slice_z_end=95,
+    slice_h_divisor=100.0,
+):
+    """Render raw slice and erosion screenshots for quant_map_mm_panel workflow."""
+    if not nifti_paths:
+        return
+
+    try:
+        nifti_paths = sorted(nifti_paths, key=os.path.basename)
+    except Exception:
+        pass
+
+    os.makedirs(output_dir, exist_ok=True)
+    template_path = resolve_mricrogl_template_path(template_filename)
+    mricrogl_path = resolve_mricrogl_executable(mricrogl_path)
+
+    # [label, brain_az, brain_el, clip_az, clip_el]
+    slice_angles = [
+        ["left", 90, 0, 270, 0],
+        ["right", 270, 0, 90, 0],
+        ["anterior", 180, 0, 180, 0],
+        ["posterior", 0, -10, 0, -10],
+        ["superior", 0, 90, 0, 90],
+        ["inferior", 180, -90, 0, -90],
+    ]
+
+    tmp_root = tempfile.mkdtemp(prefix='t2vv_mricrogl_qmm_')
+    tmp_imgs = []
+    try:
+        for p in nifti_paths:
+            if not os.path.isabs(p):
+                raise ValueError(f"Input path must be absolute for MRIcroGL: {p}")
+            img = nib.load(p)
+            data = _ensure_ras(img).get_fdata(dtype=np.float32)
+            tmp_p = os.path.join(tmp_root, os.path.splitext(os.path.basename(p))[0] + '.nii')
+            nib.Nifti1Image(data, img.affine, header=img.header).to_filename(tmp_p)
+            tmp_imgs.append(tmp_p)
+
+        with open(template_path, 'r') as f:
+            tpl = f.read()
+
+        img_list_literal = '[' + ', '.join([repr(s) for s in tmp_imgs]) + ']'
+        window_literal = f"[{int(window[0])}, {int(window[1])}]"
+        camera_literal = f"{float(camera_distance)}" if camera_distance and camera_distance > 0 else "-1"
+        overlays_literal = repr(overlays if overlays is not None else [])
+        slice_angles_literal = '[' + ', '.join(
+            [f"['{a[0]}', {int(a[1])}, {int(a[2])}, {int(a[3])}, {int(a[4])}]" for a in slice_angles]
+        ) + ']'
+
+        script_text = tpl
+        script_text = script_text.replace('__IMAGELIST__', img_list_literal)
+        script_text = script_text.replace('__OUTPUT_DIR__', output_dir)
+        script_text = script_text.replace('__WINDOW__', window_literal)
+        script_text = script_text.replace('__CAMERA_DISTANCE__', camera_literal)
+        script_text = script_text.replace('__OVERLAYS__', overlays_literal)
+        script_text = script_text.replace('__MAIN_ERODE_PREFIX__', str(main_erode_prefix))
+        script_text = script_text.replace('__SLICE_Z_START__', str(int(slice_z_start)))
+        script_text = script_text.replace('__SLICE_Z_END__', str(int(slice_z_end)))
+        script_text = script_text.replace('__SLICE_H_DIVISOR__', str(float(slice_h_divisor)))
+        script_text = script_text.replace('__SLICE_ANGLES__', slice_angles_literal)
+
+        tmp_script = os.path.join(tmp_root, 'mricrogl_qmm_slices.py')
+        with open(tmp_script, 'w') as f:
+            f.write(script_text)
+
+        _configure_mricrogl_ini_preferences()
+        cmd = [mricrogl_path, '-s', tmp_script]
+        try:
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600)
+            if proc.returncode != 0:
+                raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
+        except subprocess.TimeoutExpired as e:
+            try:
+                subprocess.run(['pkill', '-f', mricrogl_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except Exception:
+                pass
+            print(f"[WARNING] MRIcroGL slice render timed out after 600s. Proceeding with partial outputs.\n{e}")
+
+        print(f"[INFO] MRIcroGL quant_map_mm_panel raw screenshots saved under: {output_dir}")
+    finally:
+        try:
+            shutil.rmtree(tmp_root)
+        except Exception:
+            pass
+
 def render_volume_and_save_pngs_pyvista(
     nifti_paths,
     output_dir,

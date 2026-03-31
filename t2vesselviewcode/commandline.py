@@ -117,7 +117,6 @@ parser.add_argument('--overlay1-color',
             type=str,
             action='store',
             help='MRIcroGL colorname for first overlay (for example: jet, red, blue, hot).',
-            default='jet',
             dest='overlay1_color')
 
 parser.add_argument('--overlay1-name',
@@ -146,8 +145,7 @@ parser.add_argument('--overlay1-opacity',
             metavar='overlay1_opacity',
             type=int,
             action='store',
-            help='Opacity for first overlay layer (0-100). Default: 35.',
-            default=35,
+            help='Opacity for first overlay layer (0-100). If omitted, defaults to 35.',
             dest='overlay1_opacity')
 
 parser.add_argument('--overlay2-path',
@@ -161,8 +159,7 @@ parser.add_argument('--overlay2-color',
             metavar='overlay2_color',
             type=str,
             action='store',
-            help='MRIcroGL colorname for second overlay.',
-            default='red',
+            help='MRIcroGL colorname for second overlay. If omitted, defaults to red (or electric_blue for quant_map_mm_panel preset).',
             dest='overlay2_color')
 
 parser.add_argument('--overlay2-name',
@@ -191,9 +188,24 @@ parser.add_argument('--overlay2-opacity',
             metavar='overlay2_opacity',
             type=int,
             action='store',
-            help='Opacity for second overlay layer (0-100). Default: 35.',
-            default=35,
+            help='Opacity for second overlay layer (0-100). If omitted, defaults to 35 (or 100 for quant_map_mm_panel preset).',
             dest='overlay2_opacity')
+
+parser.add_argument('--panel-preset',
+            metavar='panel_preset',
+            type=str,
+            choices=['quant_map_mm_panel'],
+            action='store',
+            help='Optional advanced panel preset. Currently supported: quant_map_mm_panel.',
+            dest='panel_preset')
+
+parser.add_argument('--qmm-main-erode-depth',
+            metavar='qmm_main_erode_depth',
+            type=int,
+            action='store',
+            help='Main erosion depth for quant_map_mm_panel slices (integer, e.g., 30 for prefix 030). Default: 30.',
+            default=30,
+            dest='qmm_main_erode_depth')
 
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
@@ -224,5 +236,24 @@ for overlay_idx in (1, 2):
 
     if path_val and name_val and any(ch.isspace() for ch in str(name_val)):
         parser.error(f'--overlay{overlay_idx}-name please specify a name without spaces.')
+
+# Validation for advanced panel preset
+if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
+    if not args.flair:
+        parser.error('--panel-preset quant_map_mm_panel requires a FLAIR input via -f.')
+    if not args.overlay1_path or not args.overlay2_path:
+        parser.error('--panel-preset quant_map_mm_panel requires both --overlay1-path and --overlay2-path.')
+    has_any_t2 = any([
+        bool(args.t2_3d),
+        bool(args.t2_sag),
+        bool(args.t2_sag_left),
+        bool(args.t2_sag_right),
+        bool(args.t2_cor),
+        bool(args.t2_tra),
+    ])
+    if not has_any_t2:
+        parser.error('--panel-preset quant_map_mm_panel requires at least one T2 input (3D T2 or one/more T2 planes).')
+    if int(args.qmm_main_erode_depth) < 0:
+        parser.error('--qmm-main-erode-depth must be >= 0.')
 
 
