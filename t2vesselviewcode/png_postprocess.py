@@ -28,7 +28,7 @@ from . import dir_structure
 # Hard-coded tolerance for consecutive stitched PNG dedupe.
 # Unit is mean absolute RGB difference per channel on [0, 255].
 # Lower means stricter (0.0 = exact-match only).
-CONSECUTIVE_DEDUPE_MEAN_ABS_DIFF_THRESHOLD = 0.25
+CONSECUTIVE_DEDUPE_MEAN_ABS_DIFF_THRESHOLD = 0.35
 
 
 def _ensure_dir(path: str) -> None:
