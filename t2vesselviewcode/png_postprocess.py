@@ -188,9 +188,7 @@ def _load_annotation_font(font_size: int):
     """
     candidates = [
         "Arial.ttf",                # Common on macOS/Windows
-        "DejaVuSans-Bold.ttf",      # Common on Linux
         "DejaVuSans.ttf",           # Common on Linux
-        "LiberationSans-Bold.ttf",  # Common on Linux
         "LiberationSans-Regular.ttf",
     ]
     for font_name in candidates:
