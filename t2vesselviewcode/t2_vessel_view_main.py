@@ -692,6 +692,9 @@ def main():
                 )
 
             # Angle-specific T2 source selection (prefer 2D in-plane acquisitions).
+            requested_qmm_angles = getattr(commandline.args, "qmm_angles", None) or [
+                "left", "right", "anterior", "posterior", "superior", "inferior"
+            ]
             angle_to_t2_source = {}
             if t2_sag_subset:
                 angle_to_t2_source["left"] = "T2_sag"
@@ -703,13 +706,15 @@ def main():
                 angle_to_t2_source["superior"] = "T2_tra"
                 angle_to_t2_source["inferior"] = "T2_tra"
             # Fallback to 3D T2 for any unresolved angle.
-            for ang in ["left", "right", "anterior", "posterior", "superior", "inferior"]:
+            for ang in requested_qmm_angles:
                 if ang not in angle_to_t2_source and t2_3d_subset:
                     angle_to_t2_source[ang] = "T2_3d"
 
             png_postprocess.run_preset_quant_map_mm_panel(
                 raw_root=dir_structure.renders_qmm_raw_dir,
                 angle_to_t2_source=angle_to_t2_source,
+                qmm_angles=requested_qmm_angles,
+                overlay_names=overlay_names,
                 add_orientation_labels=True,
                 background_rgb=[0, 0, 0],
                 threshold=2,

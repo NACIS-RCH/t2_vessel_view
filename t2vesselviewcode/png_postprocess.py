@@ -961,6 +961,8 @@ def _prepare_qmm_annotated_series(
 def run_preset_quant_map_mm_panel(
     raw_root: str,
     angle_to_t2_source: Dict[str, str],
+    qmm_angles: Optional[List[str]] = None,
+    overlay_names: Optional[List[str]] = None,
     add_orientation_labels: bool = True,
     background_rgb: List[int] = [0, 0, 0],
     threshold: int = 2,
@@ -977,7 +979,12 @@ def run_preset_quant_map_mm_panel(
       raw_root/FLAIR/...
     where <T2_source> is one of: T2_sag, T2_cor, T2_tra, T2_3d.
     """
-    angles = ['left', 'right', 'anterior', 'posterior', 'superior', 'inferior']
+    angles = qmm_angles or ['left', 'right', 'anterior', 'posterior', 'superior', 'inferior']
+    overlay1_name = (overlay_names[0] if overlay_names and len(overlay_names) >= 1 else "Overlay1")
+    overlay2_name = (overlay_names[1] if overlay_names and len(overlay_names) >= 2 else "Overlay2")
+    t1_overlay_label = f"T1 + {overlay1_name} + {overlay2_name}"
+    t2_overlay_label = f"T2 (inv) + {overlay1_name}"
+    flair_overlay_label = f"FLAIR + {overlay1_name}"
     stitched_root = os.path.join(dir_structure.renders_qmm_stitched_dir, 'by_angle')
     _ensure_dir(stitched_root)
     combined_for_pptx = os.path.join(dir_structure.renders_qmm_stitched_dir, '_combined_for_pptx')
@@ -1024,9 +1031,9 @@ def run_preset_quant_map_mm_panel(
                     _log_skipped_prefixes(f"quant_map_mm_panel slices ({angle})", all_slice_keys, common_slice_keys)
 
                     annotated_root = os.path.join(stitched_root, angle, 'slices_annotated')
-                    t1_ov_ann = _prepare_qmm_annotated_series(slice_maps[0], common_slice_keys, os.path.join(annotated_root, 't1_overlay'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
-                    t2_ov_ann = _prepare_qmm_annotated_series(slice_maps[1], common_slice_keys, os.path.join(annotated_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
-                    fl_ov_ann = _prepare_qmm_annotated_series(slice_maps[2], common_slice_keys, os.path.join(annotated_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
+                    t1_ov_ann = _prepare_qmm_annotated_series(slice_maps[0], common_slice_keys, os.path.join(annotated_root, 't1_overlay'), angle, t1_overlay_label, add_orientation_labels, background_rgb, threshold)
+                    t2_ov_ann = _prepare_qmm_annotated_series(slice_maps[1], common_slice_keys, os.path.join(annotated_root, 't2_overlay'), angle, t2_overlay_label, add_orientation_labels, background_rgb, threshold)
+                    fl_ov_ann = _prepare_qmm_annotated_series(slice_maps[2], common_slice_keys, os.path.join(annotated_root, 'flair_overlay'), angle, flair_overlay_label, add_orientation_labels, background_rgb, threshold)
                     t1_st_ann = _prepare_qmm_annotated_series(slice_maps[3], common_slice_keys, os.path.join(annotated_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
                     t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
                     fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
@@ -1070,9 +1077,9 @@ def run_preset_quant_map_mm_panel(
         _log_skipped_prefixes(f"quant_map_mm_panel erosions ({angle})", all_erode_keys, common_erode_keys)
 
         erode_ann_root = os.path.join(stitched_root, angle, 'erosions_annotated')
-        t1_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[0], common_erode_keys, os.path.join(erode_ann_root, 't1_overlay'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
-        t2_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[1], common_erode_keys, os.path.join(erode_ann_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
-        fl_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[2], common_erode_keys, os.path.join(erode_ann_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
+        t1_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[0], common_erode_keys, os.path.join(erode_ann_root, 't1_overlay'), angle, t1_overlay_label, add_orientation_labels, background_rgb, threshold)
+        t2_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[1], common_erode_keys, os.path.join(erode_ann_root, 't2_overlay'), angle, t2_overlay_label, add_orientation_labels, background_rgb, threshold)
+        fl_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[2], common_erode_keys, os.path.join(erode_ann_root, 'flair_overlay'), angle, flair_overlay_label, add_orientation_labels, background_rgb, threshold)
         t1_st_e_ann = _prepare_qmm_annotated_series(erode_maps[3], common_erode_keys, os.path.join(erode_ann_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
         t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
         fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
