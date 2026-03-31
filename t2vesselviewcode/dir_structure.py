@@ -39,6 +39,9 @@ renders_t1_overlay_angle_dir = os.path.join(base_directory, "T2VesselView/3D_ren
 renders_t2_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders")
 renders_t2_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level")
 renders_t2_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle")
+renders_qmm_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/Quant_map_mm_panel")
+renders_qmm_raw_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/Quant_map_mm_panel/raw")
+renders_qmm_stitched_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/Quant_map_mm_panel/stitched")
 
 ## specify directories to be made
 directory_structure = [
@@ -71,7 +74,10 @@ directory_structure = [
     renders_t1_overlay_angle_dir,
     renders_t2_dir,
     renders_t2_erode_dir,
-    renders_t2_angle_dir
+    renders_t2_angle_dir,
+    renders_qmm_dir,
+    renders_qmm_raw_dir,
+    renders_qmm_stitched_dir
 ]
 
 def create_directories():

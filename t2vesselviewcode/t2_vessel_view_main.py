@@ -7,6 +7,7 @@ import nibabel.freesurfer.mghformat as fsmgh
 import gzip
 import sys
 import shutil
+import re
 import SimpleITK as sitk
 import nipype.interfaces.fsl as fsl
 import ants
@@ -91,7 +92,7 @@ def run_dependency_preflight():
     print("Dependency preflight checks passed.")
     return True
 
-def _build_cli_overlay_specs():
+def _build_cli_overlay_specs(panel_preset=None):
     """Build up to two MRIcroGL overlay specs from CLI arguments.
 
     Overlays are loaded directly in MRIcroGL (not preprocessed/masked by this pipeline).
@@ -107,11 +108,20 @@ def _build_cli_overlay_specs():
         if not os.path.exists(path_val):
             raise FileNotFoundError(f"Overlay {idx} not found: {path_val}")
 
-        color_val = getattr(commandline.args, f"overlay{idx}_color", "jet")
+        # Preset-specific defaults (only when value was not provided on CLI)
+        default_color = "jet" if idx == 1 else "red"
+        default_opacity = 35
+        if panel_preset == "quant_map_mm_panel" and idx == 2:
+            default_color = "electric_blue"
+            default_opacity = 100
+
+        raw_color = getattr(commandline.args, f"overlay{idx}_color", None)
+        color_val = raw_color if raw_color else default_color
         name_val = getattr(commandline.args, f"overlay{idx}_name", f"Overlay{idx}")
         min_val = getattr(commandline.args, f"overlay{idx}_min", None)
         max_val = getattr(commandline.args, f"overlay{idx}_max", None)
-        opacity_val = int(getattr(commandline.args, f"overlay{idx}_opacity", 35))
+        raw_opacity = getattr(commandline.args, f"overlay{idx}_opacity", None)
+        opacity_val = int(raw_opacity) if raw_opacity is not None else int(default_opacity)
 
         if min_val is None or max_val is None:
             auto_min, auto_max = volume_rendering.compute_series_window(
@@ -139,11 +149,34 @@ def _build_cli_overlay_specs():
     return overlays, overlay_names
 
 
+def _select_qmm_eroded_subset(nifti_paths, main_depth_int):
+    """Select erosion files around main depth: -10, -5, 0, +5, +10, +15."""
+    if not nifti_paths:
+        return []
+    target_depths = [
+        int(main_depth_int) - 10,
+        int(main_depth_int) - 5,
+        int(main_depth_int),
+        int(main_depth_int) + 5,
+        int(main_depth_int) + 10,
+        int(main_depth_int) + 15,
+    ]
+    target_prefixes = {f"{d:03d}" for d in target_depths if d >= 0}
+    selected = []
+    for p in sorted(nifti_paths, key=os.path.basename):
+        bn = os.path.basename(p)
+        m = re.match(r"^(\d+)_eroded", bn)
+        if m and m.group(1).zfill(3) in target_prefixes:
+            selected.append(p)
+    return selected
+
+
 def main():
     if not run_dependency_preflight():
         sys.exit(1)
 
     auto_method = getattr(commandline.args, "auto_mask_method", "bet")
+    panel_preset = getattr(commandline.args, "panel_preset", None)
 
     # User-friendly rule: FLAIR is optional for BET, required for watershed.
     if auto_method == "watershed" and not commandline.args.flair:
@@ -387,7 +420,7 @@ def main():
     mricrogl_exec = volume_rendering.resolve_mricrogl_executable(
         os.environ.get('T2VV_MRICROGL_PATH', "")
     )
-    overlay_specs, overlay_names = _build_cli_overlay_specs()
+    overlay_specs, overlay_names = _build_cli_overlay_specs(panel_preset=panel_preset)
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
@@ -560,6 +593,123 @@ def main():
             template_filename="mricrogl_T1_renders.py",
             camera_distance='auto'
         )
+
+    # --- Advanced preset: quant_map_mm_panel (keeps normal outputs as well) ---
+    if panel_preset == "quant_map_mm_panel":
+        try:
+            if len(overlay_specs) < 2:
+                raise ValueError("quant_map_mm_panel requires two overlays (--overlay1-path and --overlay2-path).")
+            if not flair_eroded_files:
+                raise ValueError("quant_map_mm_panel requires FLAIR inputs and eroded FLAIR outputs.")
+
+            main_depth_int = int(getattr(commandline.args, "qmm_main_erode_depth", 30))
+            main_prefix = f"{main_depth_int:03d}"
+
+            t1_subset = _select_qmm_eroded_subset(t1_eroded_files, main_depth_int)
+            flair_subset = _select_qmm_eroded_subset(flair_eroded_files, main_depth_int)
+            t2_sag_subset = _select_qmm_eroded_subset(t2_sag_eroded_files, main_depth_int)
+            t2_cor_subset = _select_qmm_eroded_subset(t2_cor_eroded_files, main_depth_int)
+            t2_tra_subset = _select_qmm_eroded_subset(t2_tra_eroded_files, main_depth_int)
+            t2_3d_subset = _select_qmm_eroded_subset(t2_3d_eroded_files, main_depth_int)
+
+            if not t1_subset:
+                raise ValueError("quant_map_mm_panel: no matching T1 eroded subset found around requested main depth.")
+            if not flair_subset:
+                raise ValueError("quant_map_mm_panel: no matching FLAIR eroded subset found around requested main depth.")
+
+            print(
+                f"[INFO] Running quant_map_mm_panel preset with main erosion depth {main_depth_int} "
+                f"(prefix {main_prefix})."
+            )
+
+            # Render raw slices/snapshots for required modality buckets.
+            t1_win = volume_rendering.compute_series_window(t1_subset, low_pct=2.0, high_pct=80.0)
+            flair_win = volume_rendering.compute_series_window(flair_subset, low_pct=7.5, high_pct=99.99)
+            volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                t1_subset,
+                os.path.join(dir_structure.renders_qmm_raw_dir, "T1"),
+                overlays=overlay_specs,
+                window=t1_win,
+                main_erode_prefix=main_prefix,
+                mricrogl_path=mricrogl_exec
+            )
+            volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                flair_subset,
+                os.path.join(dir_structure.renders_qmm_raw_dir, "FLAIR"),
+                overlays=overlay_specs,
+                window=flair_win,
+                main_erode_prefix=main_prefix,
+                mricrogl_path=mricrogl_exec
+            )
+
+            # Optional T2 sources; we render any available source used by angle mapping.
+            if t2_sag_subset:
+                t2_sag_win = volume_rendering.compute_series_window(t2_sag_subset, low_pct=0.3, high_pct=99.75)
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    t2_sag_subset,
+                    os.path.join(dir_structure.renders_qmm_raw_dir, "T2_sag"),
+                    overlays=overlay_specs,
+                    window=t2_sag_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec
+                )
+            if t2_cor_subset:
+                t2_cor_win = volume_rendering.compute_series_window(t2_cor_subset, low_pct=0.3, high_pct=99.75)
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    t2_cor_subset,
+                    os.path.join(dir_structure.renders_qmm_raw_dir, "T2_cor"),
+                    overlays=overlay_specs,
+                    window=t2_cor_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec
+                )
+            if t2_tra_subset:
+                t2_tra_win = volume_rendering.compute_series_window(t2_tra_subset, low_pct=0.3, high_pct=99.75)
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    t2_tra_subset,
+                    os.path.join(dir_structure.renders_qmm_raw_dir, "T2_tra"),
+                    overlays=overlay_specs,
+                    window=t2_tra_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec
+                )
+            if t2_3d_subset:
+                t2_3d_win = volume_rendering.compute_series_window(t2_3d_subset, low_pct=0.3, high_pct=99.75)
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    t2_3d_subset,
+                    os.path.join(dir_structure.renders_qmm_raw_dir, "T2_3d"),
+                    overlays=overlay_specs,
+                    window=t2_3d_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec
+                )
+
+            # Angle-specific T2 source selection (prefer 2D in-plane acquisitions).
+            angle_to_t2_source = {}
+            if t2_sag_subset:
+                angle_to_t2_source["left"] = "T2_sag"
+                angle_to_t2_source["right"] = "T2_sag"
+            if t2_cor_subset:
+                angle_to_t2_source["anterior"] = "T2_cor"
+                angle_to_t2_source["posterior"] = "T2_cor"
+            if t2_tra_subset:
+                angle_to_t2_source["superior"] = "T2_tra"
+                angle_to_t2_source["inferior"] = "T2_tra"
+            # Fallback to 3D T2 for any unresolved angle.
+            for ang in ["left", "right", "anterior", "posterior", "superior", "inferior"]:
+                if ang not in angle_to_t2_source and t2_3d_subset:
+                    angle_to_t2_source[ang] = "T2_3d"
+
+            png_postprocess.run_preset_quant_map_mm_panel(
+                raw_root=dir_structure.renders_qmm_raw_dir,
+                angle_to_t2_source=angle_to_t2_source,
+                add_orientation_labels=True,
+                background_rgb=[0, 0, 0],
+                threshold=2,
+                pptx_name="quant_map_mm_panel_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] quant_map_mm_panel preset skipped: {e}")
 
     # --- Multimodal presets only when at least one non-T1 modality was provided ---
     has_additional_modalities = any([

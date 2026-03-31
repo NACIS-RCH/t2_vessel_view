@@ -855,3 +855,195 @@ def run_preset_multimodal_other_angles_per_depth(
                 pass
 
     export_pptx_from_folder(combined_folder, pptx_basename=pptx_name)
+
+
+def _build_slice_number_map(paths: List[str]) -> Dict[str, str]:
+    """Build mapping: slice number key -> file path for '*-NNN-*' slice screenshots."""
+    out: Dict[str, str] = {}
+    for p in sorted(paths):
+        bn = os.path.basename(p)
+        m = re.search(r"-(\d{3})-", bn)
+        if not m:
+            continue
+        key = m.group(1)
+        if key not in out:
+            out[key] = p
+    return out
+
+
+def _prepare_qmm_annotated_series(
+    paths_by_key: Dict[str, str],
+    ordered_keys: List[str],
+    output_dir: str,
+    angle: str,
+    modality_label: str,
+    add_orientation_labels: bool
+) -> List[str]:
+    """Create annotated PNG list ordered by keys for quant_map_mm_panel stitching."""
+    _ensure_dir(output_dir)
+    ann_paths = []
+    for key in ordered_keys:
+        src = paths_by_key.get(key)
+        if not src:
+            continue
+        dst = os.path.join(output_dir, os.path.basename(src))
+        if add_orientation_labels:
+            annotate_by_angle_on_png(src, dst, angle)
+        else:
+            try:
+                from shutil import copyfile
+                copyfile(src, dst)
+            except Exception:
+                continue
+        annotate_modality_center_bottom(dst, dst, modality_label)
+        ann_paths.append(dst)
+    return ann_paths
+
+
+def run_preset_quant_map_mm_panel(
+    raw_root: str,
+    angle_to_t2_source: Dict[str, str],
+    add_orientation_labels: bool = True,
+    background_rgb: List[int] = [0, 0, 0],
+    threshold: int = 2,
+    pptx_name: str = "quant_map_mm_panel_overview"
+) -> None:
+    """Build quant_map_mm_panel stitched PNGs and PPTX from raw screenshot folders.
+
+    Expects raw_root folder structure:
+      raw_root/T1/<angle>_slices_overlay
+      raw_root/T1/<angle>_slices_structural
+      raw_root/T1/<angle>_erosion_overlay
+      raw_root/T1/<angle>_erosion_structural
+      raw_root/<T2_source>/...
+      raw_root/FLAIR/...
+    where <T2_source> is one of: T2_sag, T2_cor, T2_tra, T2_3d.
+    """
+    angles = ['left', 'right', 'anterior', 'posterior', 'superior', 'inferior']
+    stitched_root = os.path.join(dir_structure.renders_qmm_stitched_dir, 'by_angle')
+    _ensure_dir(stitched_root)
+    combined_for_pptx = os.path.join(dir_structure.renders_qmm_stitched_dir, '_combined_for_pptx')
+    _ensure_dir(combined_for_pptx)
+
+    slide_idx = 0
+    for angle in angles:
+        t2_source = angle_to_t2_source.get(angle)
+        if not t2_source:
+            print(f"[WARNING] quant_map_mm_panel: skipping angle '{angle}' (no T2 source selected)")
+            continue
+
+        # Build six required directories for two-row (top overlay, bottom structural)
+        t1_overlay_dir = os.path.join(raw_root, 'T1', f"{angle}_slices_overlay")
+        t2_overlay_dir = os.path.join(raw_root, t2_source, f"{angle}_slices_overlay")
+        flair_overlay_dir = os.path.join(raw_root, 'FLAIR', f"{angle}_slices_overlay")
+        t1_struct_dir = os.path.join(raw_root, 'T1', f"{angle}_slices_structural")
+        t2_struct_dir = os.path.join(raw_root, t2_source, f"{angle}_slices_structural")
+        flair_struct_dir = os.path.join(raw_root, 'FLAIR', f"{angle}_slices_structural")
+
+        # Also stitch erosion snapshots for the same angle.
+        t1_overlay_erode_dir = os.path.join(raw_root, 'T1', f"{angle}_erosion_overlay")
+        t2_overlay_erode_dir = os.path.join(raw_root, t2_source, f"{angle}_erosion_overlay")
+        flair_overlay_erode_dir = os.path.join(raw_root, 'FLAIR', f"{angle}_erosion_overlay")
+        t1_struct_erode_dir = os.path.join(raw_root, 'T1', f"{angle}_erosion_structural")
+        t2_struct_erode_dir = os.path.join(raw_root, t2_source, f"{angle}_erosion_structural")
+        flair_struct_erode_dir = os.path.join(raw_root, 'FLAIR', f"{angle}_erosion_structural")
+
+        # -------------------- Slice sweep panels --------------------
+        slice_dirs = [
+            t1_overlay_dir, t2_overlay_dir, flair_overlay_dir,
+            t1_struct_dir, t2_struct_dir, flair_struct_dir
+        ]
+        if not all(os.path.isdir(d) for d in slice_dirs):
+            print(f"[WARNING] quant_map_mm_panel: skipping angle '{angle}' slices (missing one or more required dirs)")
+        else:
+            slice_maps = [_build_slice_number_map(_list_pngs(d)) for d in slice_dirs]
+            if all(slice_maps):
+                all_slice_keys: Set[str] = set()
+                for mp in slice_maps:
+                    all_slice_keys.update(mp.keys())
+                common_slice_keys = _common_prefixes_across_maps(slice_maps)
+                if common_slice_keys:
+                    _log_skipped_prefixes(f"quant_map_mm_panel slices ({angle})", all_slice_keys, common_slice_keys)
+
+                    annotated_root = os.path.join(stitched_root, angle, 'slices_annotated')
+                    t1_ov_ann = _prepare_qmm_annotated_series(slice_maps[0], common_slice_keys, os.path.join(annotated_root, 't1_overlay'), angle, 'T1', add_orientation_labels)
+                    t2_ov_ann = _prepare_qmm_annotated_series(slice_maps[1], common_slice_keys, os.path.join(annotated_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels)
+                    fl_ov_ann = _prepare_qmm_annotated_series(slice_maps[2], common_slice_keys, os.path.join(annotated_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels)
+                    t1_st_ann = _prepare_qmm_annotated_series(slice_maps[3], common_slice_keys, os.path.join(annotated_root, 't1_struct'), angle, 'T1', add_orientation_labels)
+                    t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels)
+                    fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels)
+
+                    n = len(common_slice_keys)
+                    out_angle_slices = os.path.join(stitched_root, angle, 'slices_stitched')
+                    _ensure_dir(out_angle_slices)
+                    concat_two_rows(
+                        n,
+                        top_lists=[t1_ov_ann, t2_ov_ann, fl_ov_ann],
+                        bottom_lists=[t1_st_ann, t2_st_ann, fl_st_ann],
+                        output_location=out_angle_slices
+                    )
+
+                    for p in sorted(glob.glob(os.path.join(out_angle_slices, 'concat_*.png'))):
+                        dst = os.path.join(combined_for_pptx, f'concat_{slide_idx:03}.png')
+                        try:
+                            from shutil import copyfile
+                            copyfile(p, dst)
+                            slide_idx += 1
+                        except Exception:
+                            pass
+                else:
+                    print(f"[WARNING] quant_map_mm_panel: no shared slice keys for angle '{angle}'")
+            else:
+                print(f"[WARNING] quant_map_mm_panel: no eligible slice PNGs for angle '{angle}'")
+
+        # -------------------- Erosion snapshot panels --------------------
+        erode_dirs = [
+            t1_overlay_erode_dir, t2_overlay_erode_dir, flair_overlay_erode_dir,
+            t1_struct_erode_dir, t2_struct_erode_dir, flair_struct_erode_dir
+        ]
+        if not all(os.path.isdir(d) for d in erode_dirs):
+            print(f"[WARNING] quant_map_mm_panel: skipping angle '{angle}' erosions (missing one or more required dirs)")
+            continue
+
+        erode_maps = [_build_prefix_map(_list_pngs(d)) for d in erode_dirs]
+        if not all(erode_maps):
+            print(f"[WARNING] quant_map_mm_panel: no eligible erosion PNGs for angle '{angle}'")
+            continue
+
+        all_erode_keys: Set[str] = set()
+        for mp in erode_maps:
+            all_erode_keys.update(mp.keys())
+        common_erode_keys = _common_prefixes_across_maps(erode_maps)
+        if not common_erode_keys:
+            print(f"[WARNING] quant_map_mm_panel: no shared erosion prefixes for angle '{angle}'")
+            continue
+        _log_skipped_prefixes(f"quant_map_mm_panel erosions ({angle})", all_erode_keys, common_erode_keys)
+
+        erode_ann_root = os.path.join(stitched_root, angle, 'erosions_annotated')
+        t1_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[0], common_erode_keys, os.path.join(erode_ann_root, 't1_overlay'), angle, 'T1', add_orientation_labels)
+        t2_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[1], common_erode_keys, os.path.join(erode_ann_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels)
+        fl_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[2], common_erode_keys, os.path.join(erode_ann_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels)
+        t1_st_e_ann = _prepare_qmm_annotated_series(erode_maps[3], common_erode_keys, os.path.join(erode_ann_root, 't1_struct'), angle, 'T1', add_orientation_labels)
+        t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels)
+        fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels)
+
+        n_erode = len(common_erode_keys)
+        out_angle_erosions = os.path.join(stitched_root, angle, 'erosions_stitched')
+        _ensure_dir(out_angle_erosions)
+        concat_two_rows(
+            n_erode,
+            top_lists=[t1_ov_e_ann, t2_ov_e_ann, fl_ov_e_ann],
+            bottom_lists=[t1_st_e_ann, t2_st_e_ann, fl_st_e_ann],
+            output_location=out_angle_erosions
+        )
+
+        for p in sorted(glob.glob(os.path.join(out_angle_erosions, 'concat_*.png'))):
+            dst = os.path.join(combined_for_pptx, f'concat_{slide_idx:03}.png')
+            try:
+                from shutil import copyfile
+                copyfile(p, dst)
+                slide_idx += 1
+            except Exception:
+                pass
+
+    export_pptx_from_folder(combined_for_pptx, pptx_basename=pptx_name)
