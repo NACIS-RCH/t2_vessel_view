@@ -421,36 +421,38 @@ def main():
         os.environ.get('T2VV_MRICROGL_PATH', "")
     )
     overlay_specs, overlay_names = _build_cli_overlay_specs(panel_preset=panel_preset)
+    qmm_only_outputs_mode = panel_preset == "quant_map_mm_panel"
     # T1
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
         # Compute a robust window from the series (use 2nd/80th percentiles for T1)
         t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=80.0)
-        # volume_rendering.render_volume_and_save_pngs_pyvista(
-        #     t1_eroded_files,
-        #     dir_structure.renders_t1_dir
-        # )
-        volume_rendering.render_volume_and_save_pngs_mricrogl(
-            t1_eroded_files,
-            dir_structure.renders_t1_dir,
-            angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
-                    [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
-            window=t1_window,
-            image_size=(1200,1200),
-            mricrogl_path=mricrogl_exec,
-            template_filename="mricrogl_T1_renders.py",
-            camera_distance='auto'
-        )
-        # Post-process: crop, L/R annotate, stitch, and export PPTX for T1 overview
-        try:
-            png_postprocess.run_preset_t1_overview_per_depth(
-                add_orientation_labels=True,
-                background_rgb=[0,0,0],
-                threshold=2,
-                pptx_name="T1_overview"
+        if not qmm_only_outputs_mode:
+            # volume_rendering.render_volume_and_save_pngs_pyvista(
+            #     t1_eroded_files,
+            #     dir_structure.renders_t1_dir
+            # )
+            volume_rendering.render_volume_and_save_pngs_mricrogl(
+                t1_eroded_files,
+                dir_structure.renders_t1_dir,
+                angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                        [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
+                window=t1_window,
+                image_size=(1200,1200),
+                mricrogl_path=mricrogl_exec,
+                template_filename="mricrogl_T1_renders.py",
+                camera_distance='auto'
             )
-        except Exception as e:
-            print(f"[WARNING] PNG post-processing (T1 overview) skipped: {e}")
+            # Post-process: crop, L/R annotate, stitch, and export PPTX for T1 overview
+            try:
+                png_postprocess.run_preset_t1_overview_per_depth(
+                    add_orientation_labels=True,
+                    background_rgb=[0,0,0],
+                    threshold=2,
+                    pptx_name="T1_overview"
+                )
+            except Exception as e:
+                print(f"[WARNING] PNG post-processing (T1 overview) skipped: {e}")
         # Optional T1 + overlay rendering (only if at least one overlay was provided)
         if overlay_specs:
             try:
@@ -478,7 +480,7 @@ def main():
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
     # T2 Sagittal
     t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
-    if t2_sag_eroded_files:
+    if (not qmm_only_outputs_mode) and t2_sag_eroded_files:
         t2_sag_window = volume_rendering.compute_series_window(t2_sag_eroded_files, low_pct=0.3, high_pct=99.75)
         # Split into left/right/generic lists by filename tag
         t2_sag_left_files = [p for p in t2_sag_eroded_files if 't2_sag_left' in os.path.basename(p).lower()]
@@ -519,7 +521,7 @@ def main():
             )
     # T2 Coronal
     t2_cor_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz'))
-    if t2_cor_eroded_files:
+    if (not qmm_only_outputs_mode) and t2_cor_eroded_files:
         t2_cor_window = volume_rendering.compute_series_window(t2_cor_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_cor_eroded_files,
@@ -538,7 +540,7 @@ def main():
         )
     # T2 Transverse
     t2_tra_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz'))
-    if t2_tra_eroded_files:
+    if (not qmm_only_outputs_mode) and t2_tra_eroded_files:
         t2_tra_window = volume_rendering.compute_series_window(t2_tra_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_tra_eroded_files,
@@ -557,7 +559,7 @@ def main():
         )
     # T2 3D
     t2_3d_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz'))
-    if t2_3d_eroded_files:
+    if (not qmm_only_outputs_mode) and t2_3d_eroded_files:
         t2_3d_window = volume_rendering.compute_series_window(t2_3d_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     t2_3d_eroded_files,
@@ -576,7 +578,7 @@ def main():
         )
     # FLAIR
     flair_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz'))
-    if flair_eroded_files:
+    if (not qmm_only_outputs_mode) and flair_eroded_files:
         flair_window = volume_rendering.compute_series_window(flair_eroded_files, low_pct=7.5, high_pct=99.99)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
         #     flair_eroded_files,
@@ -723,7 +725,7 @@ def main():
     ])
 
     # --- Multimodal by-angle preset (one combined PPTX) ---
-    if has_additional_modalities:
+    if (not qmm_only_outputs_mode) and has_additional_modalities:
         try:
             png_postprocess.run_preset_multimodal_by_angle_per_depth(
                 angles=['superior','inferior','left','right','anterior','posterior'],
@@ -734,22 +736,23 @@ def main():
             )
         except Exception as e:
             print(f"[WARNING] PNG post-processing (multimodal by angle) skipped: {e}")
-    else:
+    elif not qmm_only_outputs_mode:
         print("[INFO] Skipping multimodal overview preset: no FLAIR/T2 inputs were provided.")
 
     # --- T2-only overview (two-row if complete, else single-row) ---
-    try:
-        png_postprocess.run_preset_t2_overview_per_depth(
-            add_orientation_labels=True,
-            background_rgb=[0,0,0],
-            threshold=2,
-            pptx_name="T2_overview"
-        )
-    except Exception as e:
-        print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
+    if not qmm_only_outputs_mode:
+        try:
+            png_postprocess.run_preset_t2_overview_per_depth(
+                add_orientation_labels=True,
+                background_rgb=[0,0,0],
+                threshold=2,
+                pptx_name="T2_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
 
     # --- Multimodal surgical angles ---
-    if has_additional_modalities:
+    if (not qmm_only_outputs_mode) and has_additional_modalities:
         try:
             png_postprocess.run_preset_multimodal_other_angles_per_depth(
                 angles=['surg_left_lat','surg_right_lat','surg_left_ato','surg_right_ato'],
@@ -760,7 +763,7 @@ def main():
             )
         except Exception as e:
             print(f"[WARNING] PNG post-processing (multimodal other angles) skipped: {e}")
-    else:
+    elif not qmm_only_outputs_mode:
         print("[INFO] Skipping multimodal surgical preset: no FLAIR/T2 inputs were provided.")
 
     return 0
