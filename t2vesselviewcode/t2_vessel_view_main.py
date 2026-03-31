@@ -603,6 +603,11 @@ def main():
                 raise ValueError("quant_map_mm_panel requires two overlays (--overlay1-path and --overlay2-path).")
             if not flair_eroded_files:
                 raise ValueError("quant_map_mm_panel requires FLAIR inputs and eroded FLAIR outputs.")
+            # Preset-specific overlay behavior:
+            # - T1 panels keep both overlays in CLI order.
+            # - Non-T1 panels (FLAIR/T2) use only the first overlay.
+            qmm_t1_overlays = overlay_specs
+            qmm_non_t1_overlays = overlay_specs[:1]
 
             main_depth_int = int(getattr(commandline.args, "qmm_main_erode_depth", 30))
             main_prefix = f"{main_depth_int:03d}"
@@ -630,7 +635,7 @@ def main():
             volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                 t1_subset,
                 os.path.join(dir_structure.renders_qmm_raw_dir, "T1"),
-                overlays=overlay_specs,
+                overlays=qmm_t1_overlays,
                 window=t1_win,
                 main_erode_prefix=main_prefix,
                 mricrogl_path=mricrogl_exec
@@ -638,7 +643,7 @@ def main():
             volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                 flair_subset,
                 os.path.join(dir_structure.renders_qmm_raw_dir, "FLAIR"),
-                overlays=overlay_specs,
+                overlays=qmm_non_t1_overlays,
                 window=flair_win,
                 main_erode_prefix=main_prefix,
                 mricrogl_path=mricrogl_exec
@@ -650,7 +655,7 @@ def main():
                 volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                     t2_sag_subset,
                     os.path.join(dir_structure.renders_qmm_raw_dir, "T2_sag"),
-                    overlays=overlay_specs,
+                    overlays=qmm_non_t1_overlays,
                     window=t2_sag_win,
                     main_erode_prefix=main_prefix,
                     mricrogl_path=mricrogl_exec
@@ -660,7 +665,7 @@ def main():
                 volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                     t2_cor_subset,
                     os.path.join(dir_structure.renders_qmm_raw_dir, "T2_cor"),
-                    overlays=overlay_specs,
+                    overlays=qmm_non_t1_overlays,
                     window=t2_cor_win,
                     main_erode_prefix=main_prefix,
                     mricrogl_path=mricrogl_exec
@@ -670,7 +675,7 @@ def main():
                 volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                     t2_tra_subset,
                     os.path.join(dir_structure.renders_qmm_raw_dir, "T2_tra"),
-                    overlays=overlay_specs,
+                    overlays=qmm_non_t1_overlays,
                     window=t2_tra_win,
                     main_erode_prefix=main_prefix,
                     mricrogl_path=mricrogl_exec
@@ -680,7 +685,7 @@ def main():
                 volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                     t2_3d_subset,
                     os.path.join(dir_structure.renders_qmm_raw_dir, "T2_3d"),
-                    overlays=overlay_specs,
+                    overlays=qmm_non_t1_overlays,
                     window=t2_3d_win,
                     main_erode_prefix=main_prefix,
                     mricrogl_path=mricrogl_exec
