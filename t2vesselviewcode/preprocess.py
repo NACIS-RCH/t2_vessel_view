@@ -166,7 +166,7 @@ def preprocess_main_image(input_t1):
     
     ## sitk n4 (THIS WORKS)
     main_image_crop = sitk.ReadImage(os.path.join(output_dir, "T1_crop.nii.gz"))
-    #main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
+    main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
     #write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
     
     ## then upsample with sitk
@@ -177,7 +177,7 @@ def preprocess_main_image(input_t1):
     new_size = [int(sz * spacing / new_spacing[idx]) for idx, (sz, spacing) in enumerate(zip(main_image_crop.GetSize(), main_image_crop.GetSpacing()))]
 
     # Perform resampling
-    main_image_crop_n4_rs = sitk.Resample(main_image_crop, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop.GetOrigin(), new_spacing, main_image_crop.GetDirection(), 0.0, main_image_crop.GetPixelID())
+    main_image_crop_n4_rs = sitk.Resample(main_image_crop_n4, new_size, sitk.Transform(), sitk.sitkLinear, main_image_crop_n4.GetOrigin(), new_spacing, main_image_crop_n4.GetDirection(), 0.0, main_image_crop_n4.GetPixelID())
     
     main_image_crop_n4_rs_resc = sitk.RescaleIntensity(main_image_crop_n4_rs, outputMinimum = 0, outputMaximum = 1000)
     

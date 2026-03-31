@@ -426,7 +426,7 @@ def main():
     t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
     if t1_eroded_files:
         # Compute a robust window from the series (use 2nd/80th percentiles for T1)
-        t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=80.0)
+        t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=90.0)
         if not qmm_only_outputs_mode:
             # volume_rendering.render_volume_and_save_pngs_pyvista(
             #     t1_eroded_files,
