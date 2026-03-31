@@ -16,15 +16,19 @@ Downstream: more presets (multimodal per angle), richer labels (S/I/A/P), DPI tu
 import os
 import glob
 import re
-import hashlib
 from typing import Dict, List, Optional, Set, Tuple
 
 import pyvips
-from PIL import Image as PILImage, ImageDraw, ImageFont
+from PIL import Image as PILImage, ImageDraw, ImageFont, ImageChops, ImageStat
 from pptx import Presentation
 from pptx.util import Inches
 
 from . import dir_structure
+
+# Hard-coded tolerance for consecutive stitched PNG dedupe.
+# Unit is mean absolute RGB difference per channel on [0, 255].
+# Lower means stricter (0.0 = exact-match only).
+CONSECUTIVE_DEDUPE_MEAN_ABS_DIFF_THRESHOLD = 0.25
 
 
 def _ensure_dir(path: str) -> None:
@@ -374,39 +378,42 @@ def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
     width_inside = Inches(38 - 0.6)
     height_inside = Inches(22 - 0.6)
 
-    def _png_content_signature(path: str) -> Optional[Tuple[int, int, str]]:
-        """Return deterministic content signature for a PNG, or None on failure."""
+    def _are_consecutive_pngs_same_or_near_same(path_a: str, path_b: str) -> bool:
+        """Return True when two PNGs are identical or within tiny tolerance."""
         try:
-            with PILImage.open(path) as im:
-                rgb = im.convert('RGB')
-                w, h = rgb.size
-                payload = rgb.tobytes()
-            digest = hashlib.sha256(payload).hexdigest()
-            return (w, h, digest)
+            with PILImage.open(path_a) as a_im, PILImage.open(path_b) as b_im:
+                a_rgb = a_im.convert('RGB')
+                b_rgb = b_im.convert('RGB')
+                if a_rgb.size != b_rgb.size:
+                    return False
+                # Fast exact check first.
+                if a_rgb.tobytes() == b_rgb.tobytes():
+                    return True
+                # Tiny-tolerance check for near-identical consecutive frames.
+                diff = ImageChops.difference(a_rgb, b_rgb)
+                mean_per_channel = ImageStat.Stat(diff).mean
+                mean_abs_diff = sum(mean_per_channel) / float(len(mean_per_channel))
+                return mean_abs_diff <= float(CONSECUTIVE_DEDUPE_MEAN_ABS_DIFF_THRESHOLD)
         except Exception:
-            return None
+            return False
 
     def _dedupe_consecutive_concat_pngs(target_folder: str) -> int:
-        """Delete consecutive duplicate concat_*.png files, keeping the first in each run."""
+        """Delete consecutive duplicate/near-duplicate concat_*.png files."""
         paths = sorted(glob.glob(os.path.join(target_folder, 'concat_*.png')))
         if len(paths) < 2:
             return 0
 
         removed = 0
-        prev_sig: Optional[Tuple[int, int, str]] = None
-        for idx, p in enumerate(paths):
-            sig = _png_content_signature(p)
-            if sig is None:
-                prev_sig = None
-                continue
-            if idx > 0 and prev_sig is not None and sig == prev_sig:
+        prev_kept: Optional[str] = None
+        for p in paths:
+            if prev_kept is not None and _are_consecutive_pngs_same_or_near_same(prev_kept, p):
                 try:
                     os.remove(p)
                     removed += 1
                     continue
                 except Exception:
                     pass
-            prev_sig = sig
+            prev_kept = p
         return removed
 
     removed_count = _dedupe_consecutive_concat_pngs(folder)
@@ -918,15 +925,25 @@ def _prepare_qmm_annotated_series(
     output_dir: str,
     angle: str,
     modality_label: str,
-    add_orientation_labels: bool
+    add_orientation_labels: bool,
+    background_rgb: List[int],
+    threshold: int
 ) -> List[str]:
-    """Create annotated PNG list ordered by keys for quant_map_mm_panel stitching."""
+    """Create cropped+annotated PNG list ordered by keys for quant_map_mm_panel stitching."""
     _ensure_dir(output_dir)
+    selected_paths = [paths_by_key.get(key) for key in ordered_keys if paths_by_key.get(key)]
+    if not selected_paths:
+        return []
+
+    # Keep qmm behavior aligned with other presets: crop first, then annotate.
+    try:
+        dims = get_crop_dimensions(selected_paths, background_rgb, threshold)
+        source_paths = crop_image_series(selected_paths, output_dir, dims)
+    except Exception:
+        source_paths = selected_paths
+
     ann_paths = []
-    for key in ordered_keys:
-        src = paths_by_key.get(key)
-        if not src:
-            continue
+    for src in source_paths:
         dst = os.path.join(output_dir, os.path.basename(src))
         if add_orientation_labels:
             annotate_by_angle_on_png(src, dst, angle)
@@ -1007,12 +1024,12 @@ def run_preset_quant_map_mm_panel(
                     _log_skipped_prefixes(f"quant_map_mm_panel slices ({angle})", all_slice_keys, common_slice_keys)
 
                     annotated_root = os.path.join(stitched_root, angle, 'slices_annotated')
-                    t1_ov_ann = _prepare_qmm_annotated_series(slice_maps[0], common_slice_keys, os.path.join(annotated_root, 't1_overlay'), angle, 'T1', add_orientation_labels)
-                    t2_ov_ann = _prepare_qmm_annotated_series(slice_maps[1], common_slice_keys, os.path.join(annotated_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels)
-                    fl_ov_ann = _prepare_qmm_annotated_series(slice_maps[2], common_slice_keys, os.path.join(annotated_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels)
-                    t1_st_ann = _prepare_qmm_annotated_series(slice_maps[3], common_slice_keys, os.path.join(annotated_root, 't1_struct'), angle, 'T1', add_orientation_labels)
-                    t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels)
-                    fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels)
+                    t1_ov_ann = _prepare_qmm_annotated_series(slice_maps[0], common_slice_keys, os.path.join(annotated_root, 't1_overlay'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
+                    t2_ov_ann = _prepare_qmm_annotated_series(slice_maps[1], common_slice_keys, os.path.join(annotated_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
+                    fl_ov_ann = _prepare_qmm_annotated_series(slice_maps[2], common_slice_keys, os.path.join(annotated_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
+                    t1_st_ann = _prepare_qmm_annotated_series(slice_maps[3], common_slice_keys, os.path.join(annotated_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
+                    t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
+                    fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
                     n = len(common_slice_keys)
                     out_angle_slices = os.path.join(stitched_root, angle, 'slices_stitched')
@@ -1024,14 +1041,6 @@ def run_preset_quant_map_mm_panel(
                         output_location=out_angle_slices
                     )
 
-                    for p in sorted(glob.glob(os.path.join(out_angle_slices, 'concat_*.png'))):
-                        dst = os.path.join(combined_for_pptx, f'concat_{slide_idx:03}.png')
-                        try:
-                            from shutil import copyfile
-                            copyfile(p, dst)
-                            slide_idx += 1
-                        except Exception:
-                            pass
                 else:
                     print(f"[WARNING] quant_map_mm_panel: no shared slice keys for angle '{angle}'")
             else:
@@ -1061,12 +1070,12 @@ def run_preset_quant_map_mm_panel(
         _log_skipped_prefixes(f"quant_map_mm_panel erosions ({angle})", all_erode_keys, common_erode_keys)
 
         erode_ann_root = os.path.join(stitched_root, angle, 'erosions_annotated')
-        t1_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[0], common_erode_keys, os.path.join(erode_ann_root, 't1_overlay'), angle, 'T1', add_orientation_labels)
-        t2_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[1], common_erode_keys, os.path.join(erode_ann_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels)
-        fl_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[2], common_erode_keys, os.path.join(erode_ann_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels)
-        t1_st_e_ann = _prepare_qmm_annotated_series(erode_maps[3], common_erode_keys, os.path.join(erode_ann_root, 't1_struct'), angle, 'T1', add_orientation_labels)
-        t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels)
-        fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels)
+        t1_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[0], common_erode_keys, os.path.join(erode_ann_root, 't1_overlay'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
+        t2_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[1], common_erode_keys, os.path.join(erode_ann_root, 't2_overlay'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
+        fl_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[2], common_erode_keys, os.path.join(erode_ann_root, 'flair_overlay'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
+        t1_st_e_ann = _prepare_qmm_annotated_series(erode_maps[3], common_erode_keys, os.path.join(erode_ann_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
+        t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
+        fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
         n_erode = len(common_erode_keys)
         out_angle_erosions = os.path.join(stitched_root, angle, 'erosions_stitched')
@@ -1078,7 +1087,18 @@ def run_preset_quant_map_mm_panel(
             output_location=out_angle_erosions
         )
 
+        # For each angle in the final PPTX sequence, place erosion panels first, then slices.
         for p in sorted(glob.glob(os.path.join(out_angle_erosions, 'concat_*.png'))):
+            dst = os.path.join(combined_for_pptx, f'concat_{slide_idx:03}.png')
+            try:
+                from shutil import copyfile
+                copyfile(p, dst)
+                slide_idx += 1
+            except Exception:
+                pass
+
+        out_angle_slices = os.path.join(stitched_root, angle, 'slices_stitched')
+        for p in sorted(glob.glob(os.path.join(out_angle_slices, 'concat_*.png'))):
             dst = os.path.join(combined_for_pptx, f'concat_{slide_idx:03}.png')
             try:
                 from shutil import copyfile
