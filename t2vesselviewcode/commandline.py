@@ -207,6 +207,15 @@ parser.add_argument('--qmm-main-erode-depth',
             default=30,
             dest='qmm_main_erode_depth')
 
+parser.add_argument('--qmm-angles',
+            metavar='qmm_angles',
+            type=str,
+            nargs='+',
+            choices=['left', 'right', 'anterior', 'posterior', 'superior', 'inferior'],
+            action='store',
+            help='Optional list of angles for quant_map_mm_panel. If omitted, all six are used.',
+            dest='qmm_angles')
+
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
 ## add flags for save masks or not
@@ -255,5 +264,8 @@ if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
         parser.error('--panel-preset quant_map_mm_panel requires at least one T2 input (3D T2 or one/more T2 planes).')
     if int(args.qmm_main_erode_depth) < 0:
         parser.error('--qmm-main-erode-depth must be >= 0.')
+    if args.qmm_angles:
+        # Preserve user order while removing accidental duplicates.
+        args.qmm_angles = list(dict.fromkeys(args.qmm_angles))
 
 
