@@ -109,7 +109,7 @@ for i in IMAGELIST:
                 gl.hiddenbycutout(layer_number, 1)
                 gl.opacity(layer_number, int(ov.get('opacity', 35)))
                 gl.colorname(layer_number, str(ov.get('color', 'jet')))
-                gl.minmax(layer_number, int(ov.get('min', 0)), int(ov.get('max', 1000)))
+                gl.minmax(layer_number, float(ov.get('min', 0.0)), float(ov.get('max', 1000.0)))
             except Exception:
                 # Keep rendering even if one overlay entry fails.
                 pass

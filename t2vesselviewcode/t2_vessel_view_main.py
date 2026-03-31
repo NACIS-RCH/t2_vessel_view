@@ -141,8 +141,8 @@ def _build_cli_overlay_specs(panel_preset=None):
         overlays.append({
             "path": os.path.abspath(path_val),
             "color": str(color_val),
-            "min": int(float(min_val)),
-            "max": int(float(max_val)),
+            "min": float(min_val),
+            "max": float(max_val),
             "opacity": int(opacity_val)
         })
         overlay_names.append(str(name_val))

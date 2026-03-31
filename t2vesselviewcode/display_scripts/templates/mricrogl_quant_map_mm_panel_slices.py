@@ -55,10 +55,10 @@ def _get_overlay_fallback_max(overlay_path):
         data = img.get_fdata(dtype=np.float32)
         finite = data[np.isfinite(data)]
         if finite.size == 0:
-            return 1000
-        return int(np.max(finite))
+            return 1000.0
+        return float(np.max(finite))
     except Exception:
-        return 1000
+        return 1000.0
 
 
 for i in IMAGELIST:
@@ -115,7 +115,7 @@ for i in IMAGELIST:
                 ov_max = ov.get('max')
                 if ov_max is None:
                     ov_max = _get_overlay_fallback_max(ov_path)
-                gl.minmax(layer_number, int(ov.get('min', 0)), int(ov_max))
+                gl.minmax(layer_number, float(ov.get('min', 0.0)), float(ov_max))
             except Exception:
                 pass
 
