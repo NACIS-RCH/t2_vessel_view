@@ -487,6 +487,152 @@ def compute_series_window(
         # On any error, fall back to default window to keep pipeline moving
         return (0, 1000)
 
+
+def _make_disk_structure(radius_px):
+    """Return a 2D boolean disk structuring element for morphology checks."""
+    r = int(max(1, radius_px))
+    yy, xx = np.ogrid[-r:r + 1, -r:r + 1]
+    return (xx * xx + yy * yy) <= (r * r)
+
+
+def _render_slice_to_uint8(slice_2d, vmin, vmax):
+    """Render a 2D slice with linear clip->rescale to uint8 [0, 255]."""
+    if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
+        return np.zeros(slice_2d.shape, dtype=np.uint8)
+    clipped = np.clip(slice_2d, vmin, vmax)
+    scaled = (clipped - vmin) / (vmax - vmin)
+    return np.clip(np.round(scaled * 255.0), 0, 255).astype(np.uint8)
+
+
+def _representative_slice_views(data, spacing, n_slices=5):
+    """Yield representative 2D views: mostly axial plus central coronal/sagittal."""
+    sx, sy, sz = spacing
+    nx, ny, nz = data.shape
+    views = []
+
+    # Axial slices: spread through middle 60% of z-range.
+    axial_count = max(1, min(int(n_slices), 3))
+    if nz <= 1:
+        axial_indices = [0]
+    else:
+        z0 = max(0, int(round(0.2 * (nz - 1))))
+        z1 = max(z0, int(round(0.8 * (nz - 1))))
+        if axial_count == 1:
+            axial_indices = [int(round(0.5 * (nz - 1)))]
+        else:
+            axial_indices = np.linspace(z0, z1, axial_count).astype(int).tolist()
+    for z in axial_indices:
+        views.append((data[:, :, int(z)], float(sx), float(sy)))
+
+    # Add one central coronal and one central sagittal when requested.
+    if n_slices >= 4:
+        y = ny // 2
+        views.append((data[:, int(y), :], float(sx), float(sz)))
+    if n_slices >= 5:
+        x = nx // 2
+        views.append((data[int(x), :, :], float(sy), float(sz)))
+
+    return views[:max(1, int(n_slices))]
+
+
+def _count_valid_circle_locations(bright_mask, radius_px):
+    """Count centers where a full disk of radius_px fits inside bright_mask."""
+    try:
+        from scipy.ndimage import binary_erosion
+    except Exception:
+        # Safe fallback: if scipy morphology is unavailable, disable this check.
+        return 0
+    if bright_mask.size == 0 or not np.any(bright_mask):
+        return 0
+    structure = _make_disk_structure(radius_px)
+    fitted = binary_erosion(bright_mask.astype(bool), structure=structure, border_value=0)
+    return int(np.count_nonzero(fitted))
+
+
+def refine_window_vmax_by_saturation_circles(
+    nifti_paths,
+    initial_window,
+    radius_mm=1.5,
+    bright_threshold=250,
+    max_valid_circle_locations=4,
+    representative_slices=5,
+    max_images_to_check=3,
+    vmax_growth_factor=1.10,
+    max_iterations=8,
+):
+    """Increase vmax until broad saturated regions are limited by a disk-fit test.
+
+    Heuristic:
+    - Render representative 2D slices with linear clip->rescale to uint8.
+    - Threshold near-white pixels (>= bright_threshold).
+    - Convert radius_mm to pixels using in-plane spacing.
+    - Count where a full disk can fit inside bright regions.
+    - If any slice has more than max_valid_circle_locations, increase vmax and retry.
+    """
+    try:
+        if not nifti_paths:
+            return initial_window
+
+        vmin = float(initial_window[0])
+        vmax = float(initial_window[1])
+        if not np.isfinite(vmin) or not np.isfinite(vmax) or vmax <= vmin:
+            return (0, 1000)
+
+        files_to_check = sorted(nifti_paths, key=os.path.basename)[:max(1, int(max_images_to_check))]
+
+        for iteration in range(max(1, int(max_iterations)) + 1):
+            failed = False
+            worst_count = 0
+
+            for p in files_to_check:
+                img = _ensure_ras(nib.load(p))
+                data = img.get_fdata(dtype=np.float32)
+                if data.ndim != 3:
+                    continue
+                spacing = img.header.get_zooms()[:3]
+                if len(spacing) < 3:
+                    spacing = (1.0, 1.0, 1.0)
+
+                for sl, sp_a, sp_b in _representative_slice_views(
+                    data,
+                    spacing,
+                    n_slices=representative_slices
+                ):
+                    rendered = _render_slice_to_uint8(sl, vmin, vmax)
+                    bright_mask = rendered >= int(bright_threshold)
+                    inplane_mm = max(1e-6, 0.5 * (float(sp_a) + float(sp_b)))
+                    radius_px = int(np.ceil(float(radius_mm) / inplane_mm))
+                    valid_locations = _count_valid_circle_locations(bright_mask, radius_px)
+                    worst_count = max(worst_count, valid_locations)
+                    if valid_locations > int(max_valid_circle_locations):
+                        failed = True
+                        break
+                if failed:
+                    break
+
+            if not failed:
+                print(
+                    f"[INFO] Saturation circle check passed at iter={iteration}: "
+                    f"window=({int(vmin)}, {int(vmax)}), max_valid_circle_locations={worst_count}"
+                )
+                return (int(vmin), int(vmax))
+
+            span = max(1.0, vmax - vmin)
+            vmax = vmin + span * float(vmax_growth_factor)
+            print(
+                f"[INFO] Saturation circle check failed at iter={iteration}: "
+                f"increasing vmax to {int(vmax)}"
+            )
+
+        print(
+            "[WARNING] Saturation circle refinement hit iteration limit; "
+            f"using last window=({int(vmin)}, {int(vmax)})."
+        )
+        return (int(vmin), int(vmax))
+    except Exception as e:
+        print(f"[WARNING] Saturation circle refinement skipped due to error: {e}")
+        return initial_window
+
 def render_volume_and_save_pngs_mricrogl(
     nifti_paths,
     output_dir,

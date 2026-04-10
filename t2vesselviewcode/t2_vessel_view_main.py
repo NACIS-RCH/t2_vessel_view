@@ -430,6 +430,18 @@ def main():
     if t1_eroded_files:
         # Compute a robust window from the series (use 2nd/80th percentiles for T1)
         t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=90.0)
+        # Refine T1 vmax so broad saturated tissue regions are limited while thin bright vessels can still clip.
+        t1_window = volume_rendering.refine_window_vmax_by_saturation_circles(
+            t1_eroded_files,
+            t1_window,
+            radius_mm=1.5,
+            bright_threshold=250,
+            max_valid_circle_locations=4,
+            representative_slices=5,
+            max_images_to_check=3,
+            vmax_growth_factor=1.10,
+            max_iterations=8
+        )
         if not qmm_only_outputs_mode:
             # volume_rendering.render_volume_and_save_pngs_pyvista(
             #     t1_eroded_files,
@@ -649,6 +661,17 @@ def main():
 
             # Render raw slices/snapshots for required modality buckets.
             t1_win = volume_rendering.compute_series_window(t1_subset, low_pct=2.0, high_pct=90.0)
+            t1_win = volume_rendering.refine_window_vmax_by_saturation_circles(
+                t1_subset,
+                t1_win,
+                radius_mm=1.5,
+                bright_threshold=250,
+                max_valid_circle_locations=4,
+                representative_slices=5,
+                max_images_to_check=3,
+                vmax_growth_factor=1.10,
+                max_iterations=8
+            )
             flair_win = volume_rendering.compute_series_window(flair_subset, low_pct=7.5, high_pct=99.99)
             volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                 t1_subset,
