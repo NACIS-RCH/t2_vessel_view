@@ -648,7 +648,7 @@ def main():
             )
 
             # Render raw slices/snapshots for required modality buckets.
-            t1_win = volume_rendering.compute_series_window(t1_subset, low_pct=2.0, high_pct=80.0)
+            t1_win = volume_rendering.compute_series_window(t1_subset, low_pct=2.0, high_pct=90.0)
             flair_win = volume_rendering.compute_series_window(flair_subset, low_pct=7.5, high_pct=99.99)
             volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                 t1_subset,
