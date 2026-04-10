@@ -423,7 +423,10 @@ def main():
     overlay_specs, overlay_names = _build_cli_overlay_specs(panel_preset=panel_preset)
     qmm_only_outputs_mode = panel_preset == "quant_map_mm_panel"
     # T1
-    t1_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz'))
+    t1_eroded_files = sorted(
+        glob.glob(os.path.join(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz')),
+        key=os.path.basename
+    )
     if t1_eroded_files:
         # Compute a robust window from the series (use 2nd/80th percentiles for T1)
         t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=90.0)
@@ -479,7 +482,10 @@ def main():
             except Exception as e:
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
     # T2 Sagittal
-    t2_sag_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz'))
+    t2_sag_eroded_files = sorted(
+        glob.glob(os.path.join(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz')),
+        key=os.path.basename
+    )
     if (not qmm_only_outputs_mode) and t2_sag_eroded_files:
         t2_sag_window = volume_rendering.compute_series_window(t2_sag_eroded_files, low_pct=0.3, high_pct=99.75)
         # Split into left/right/generic lists by filename tag
@@ -520,7 +526,10 @@ def main():
                 camera_distance='auto'
             )
     # T2 Coronal
-    t2_cor_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz'))
+    t2_cor_eroded_files = sorted(
+        glob.glob(os.path.join(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz')),
+        key=os.path.basename
+    )
     if (not qmm_only_outputs_mode) and t2_cor_eroded_files:
         t2_cor_window = volume_rendering.compute_series_window(t2_cor_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
@@ -539,7 +548,10 @@ def main():
             camera_distance='auto'
         )
     # T2 Transverse
-    t2_tra_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz'))
+    t2_tra_eroded_files = sorted(
+        glob.glob(os.path.join(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz')),
+        key=os.path.basename
+    )
     if (not qmm_only_outputs_mode) and t2_tra_eroded_files:
         t2_tra_window = volume_rendering.compute_series_window(t2_tra_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
@@ -558,7 +570,10 @@ def main():
             camera_distance='auto'
         )
     # T2 3D
-    t2_3d_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz'))
+    t2_3d_eroded_files = sorted(
+        glob.glob(os.path.join(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz')),
+        key=os.path.basename
+    )
     if (not qmm_only_outputs_mode) and t2_3d_eroded_files:
         t2_3d_window = volume_rendering.compute_series_window(t2_3d_eroded_files, low_pct=0.3, high_pct=99.75)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
@@ -577,7 +592,10 @@ def main():
             camera_distance='auto'
         )
     # FLAIR
-    flair_eroded_files = glob.glob(os.path.join(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz'))
+    flair_eroded_files = sorted(
+        glob.glob(os.path.join(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz')),
+        key=os.path.basename
+    )
     if (not qmm_only_outputs_mode) and flair_eroded_files:
         flair_window = volume_rendering.compute_series_window(flair_eroded_files, low_pct=7.5, high_pct=99.99)
         # volume_rendering.render_volume_and_save_pngs_pyvista(
