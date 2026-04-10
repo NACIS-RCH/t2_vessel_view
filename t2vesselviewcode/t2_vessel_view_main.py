@@ -471,6 +471,11 @@ def main():
         # Optional T1 + overlay rendering (only if at least one overlay was provided)
         if overlay_specs:
             try:
+                # Niche behavior for quant_map_mm_panel:
+                # for T1_overlay_overview use first overlay only.
+                # Default behavior remains unchanged.
+                t1_overview_overlay_specs = overlay_specs[:1] if panel_preset == "quant_map_mm_panel" else overlay_specs
+                t1_overview_overlay_names = overlay_names[:1] if panel_preset == "quant_map_mm_panel" else overlay_names
                 volume_rendering.render_volume_and_save_pngs_mricrogl(
                     t1_eroded_files,
                     dir_structure.renders_t1_overlay_dir,
@@ -481,7 +486,7 @@ def main():
                     mricrogl_path=mricrogl_exec,
                     template_filename="mricrogl_T1_renders.py",
                     camera_distance='auto',
-                    overlays=overlay_specs
+                    overlays=t1_overview_overlay_specs
                 )
                 png_postprocess.run_preset_t1_overview_per_depth(
                     add_orientation_labels=True,
@@ -489,7 +494,7 @@ def main():
                     threshold=2,
                     pptx_name="T1_overlay_overview",
                     render_root_dir=dir_structure.renders_t1_overlay_dir,
-                    modality_label="T1 + " + " + ".join(overlay_names)
+                    modality_label="T1 + " + " + ".join(t1_overview_overlay_names)
                 )
             except Exception as e:
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
