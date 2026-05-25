@@ -57,6 +57,29 @@ def detect_image_format(file_path: str) -> str:
             # If both attempts fail, the file is neither DICOM nor NIfTI
             raise ValueError(f"Could not determine format of {file_path}")
 
+
+def extract_dicom_patient_id(input_path: str) -> Optional[str]:
+    """Return PatientID from a DICOM file or folder, if one is available."""
+    candidate_paths = []
+    if os.path.isdir(input_path):
+        for root, _, files in os.walk(input_path):
+            for filename in sorted(files):
+                candidate_paths.append(os.path.join(root, filename))
+            if candidate_paths:
+                break
+    else:
+        candidate_paths.append(input_path)
+
+    for path in candidate_paths:
+        try:
+            ds = pydicom.dcmread(path, stop_before_pixels=True)
+            patient_id = getattr(ds, "PatientID", "")
+            if patient_id:
+                return str(patient_id)
+        except Exception:
+            continue
+    return None
+
 def validate_image_dimensions(image: sitk.Image) -> Tuple[bool, str]:
     """
     Validate image dimensions and orientation.

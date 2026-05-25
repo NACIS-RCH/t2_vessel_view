@@ -16,10 +16,14 @@ Downstream: more presets (multimodal per angle), richer labels (S/I/A/P), DPI tu
 import os
 import glob
 import re
+from datetime import datetime
 from typing import Dict, List, Optional, Set, Tuple
 
+import pydicom
 import pyvips
 from PIL import Image as PILImage, ImageDraw, ImageFont, ImageChops, ImageStat
+from pydicom.dataset import FileDataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, generate_uid
 from pptx import Presentation
 from pptx.util import Inches
 
@@ -449,13 +453,104 @@ def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
     print(f"[INFO] Saved PPTX to: {out_global}")
 
 
+def export_png_series_to_dicom_folder(
+    folder: str,
+    dicom_basename: str,
+    series_description: str,
+    patient_id: Optional[str] = None,
+    output_root: Optional[str] = None
+) -> List[str]:
+    """Export stitched PNG panels as a DICOM series.
+
+    The exported files are derived screenshots, not source MR/PET slices. The
+    DICOM metadata therefore avoids anatomical geometry and stores the overlay
+    description in human-readable series fields.
+    """
+    png_paths = sorted(glob.glob(os.path.join(folder, 'concat_*.png')))
+    if not png_paths:
+        print(f"[WARNING] DICOM export skipped: no concat_*.png files found in {folder}")
+        return []
+
+    root = output_root or dir_structure.dicom_dir
+    output_dir = os.path.join(root, dicom_basename)
+    _ensure_dir(output_dir)
+
+    now = datetime.now()
+    study_uid = generate_uid()
+    series_uid = generate_uid()
+    frame_of_reference_uid = generate_uid()
+    saved_paths = []
+
+    for instance_number, png_path in enumerate(png_paths, start=1):
+        with PILImage.open(png_path) as img:
+            rgb_img = img.convert('RGB')
+            rows = int(rgb_img.height)
+            cols = int(rgb_img.width)
+            pixel_bytes = rgb_img.tobytes()
+
+        sop_instance_uid = generate_uid()
+        file_meta = FileMetaDataset()
+        file_meta.FileMetaInformationVersion = b'\x00\x01'
+        file_meta.MediaStorageSOPClassUID = SecondaryCaptureImageStorage
+        file_meta.MediaStorageSOPInstanceUID = sop_instance_uid
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        file_meta.ImplementationClassUID = generate_uid()
+
+        out_path = os.path.join(output_dir, f"{instance_number:04d}.dcm")
+        ds = FileDataset(out_path, {}, file_meta=file_meta, preamble=b'\0' * 128)
+        ds.is_little_endian = True
+        ds.is_implicit_VR = False
+
+        ds.SOPClassUID = SecondaryCaptureImageStorage
+        ds.SOPInstanceUID = sop_instance_uid
+        ds.StudyInstanceUID = study_uid
+        ds.SeriesInstanceUID = series_uid
+        ds.FrameOfReferenceUID = frame_of_reference_uid
+        ds.Modality = "OT"
+        ds.PatientID = patient_id or ""
+        ds.PatientName = ""
+        ds.StudyDescription = ""
+        ds.SeriesDescription = series_description
+        ds.ImageComments = "Postprocessed T1 and coregistered overlay image, non-quantitative"
+        ds.InstanceNumber = instance_number
+        ds.ContentDate = now.strftime("%Y%m%d")
+        ds.ContentTime = now.strftime("%H%M%S")
+        ds.StudyDate = ds.ContentDate
+        ds.StudyTime = ds.ContentTime
+        ds.SeriesDate = ds.ContentDate
+        ds.SeriesTime = ds.ContentTime
+        ds.Manufacturer = ""
+        ds.ConversionType = "WSD"
+
+        ds.SamplesPerPixel = 3
+        ds.PhotometricInterpretation = "RGB"
+        ds.PlanarConfiguration = 0
+        ds.Rows = rows
+        ds.Columns = cols
+        ds.BitsAllocated = 8
+        ds.BitsStored = 8
+        ds.HighBit = 7
+        ds.PixelRepresentation = 0
+        ds.PixelData = pixel_bytes
+
+        pydicom.dcmwrite(out_path, ds, write_like_original=False)
+        saved_paths.append(out_path)
+
+    print(f"[INFO] Saved DICOM Secondary Capture series to: {output_dir}")
+    return saved_paths
+
+
 def run_preset_t1_overview_per_depth(
     add_orientation_labels: bool = True,
     background_rgb: List[int] = [0, 0, 0],
     threshold: int = 2,
     pptx_name: str = "T1_overview",
     render_root_dir: str = None,
-    modality_label: str = "T1"
+    modality_label: str = "T1",
+    export_dicom: bool = False,
+    dicom_basename: Optional[str] = None,
+    dicom_series_description: Optional[str] = None,
+    dicom_patient_id: Optional[str] = None
 ) -> None:
     """Stitch T1 multi-angle panels per erosion depth and export PPTX.
 
@@ -530,7 +625,14 @@ def run_preset_t1_overview_per_depth(
     concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
 
     # Export PPTX with one slide per stitched panel
-    export_pptx_from_folder(out_panel_dir, pptx_name) 
+    export_pptx_from_folder(out_panel_dir, pptx_name)
+    if export_dicom:
+        export_png_series_to_dicom_folder(
+            out_panel_dir,
+            dicom_basename or pptx_name,
+            dicom_series_description or pptx_name,
+            patient_id=dicom_patient_id
+        )
 
 
 def run_preset_multimodal_by_angle_per_depth(
