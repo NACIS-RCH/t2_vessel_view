@@ -216,6 +216,18 @@ parser.add_argument('--qmm-angles',
             help='Optional list of angles for quant_map_mm_panel. If omitted, all six are used.',
             dest='qmm_angles')
 
+parser.add_argument('--export-overlay-dicom',
+            action='store_true',
+            help='Also export the T1 overlay overview stitched PNG panels as a local DICOM Secondary Capture folder. Requires at least one overlay path.',
+            dest='export_overlay_dicom')
+
+parser.add_argument('--dicom-patient-id',
+            metavar='dicom_patient_id',
+            type=str,
+            action='store',
+            help='Optional PatientID to write into generated DICOM Secondary Capture files. If omitted, PatientID is copied from source DICOM T1 input when available.',
+            dest='dicom_patient_id')
+
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
 ## add flags for save masks or not
@@ -267,5 +279,8 @@ if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
     if args.qmm_angles:
         # Preserve user order while removing accidental duplicates.
         args.qmm_angles = list(dict.fromkeys(args.qmm_angles))
+
+if args.export_overlay_dicom and not (args.overlay1_path or args.overlay2_path):
+    parser.error('--export-overlay-dicom requires --overlay1-path or --overlay2-path.')
 
 

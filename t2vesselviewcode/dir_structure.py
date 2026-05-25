@@ -18,6 +18,7 @@ eroded_nifti_t2_sag_dir = os.path.join(base_directory, "T2VesselView/Eroded_nift
 eroded_nifti_t2_3d_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_3D")
 eroded_nifti_flair_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/FLAIR")
 powerpoints_dir = os.path.join(base_directory, "T2VesselView/PowerPoints")
+dicom_dir = os.path.join(base_directory, "T2VesselView/Dicom")
 processing_dir = os.path.join(base_directory, "T2VesselView/Processing")
 processing_figures_dir = os.path.join(base_directory, "T2VesselView/Processing/Figures_for_QA")
 processing_log_dir = os.path.join(base_directory, "T2VesselView/Processing/Log_files")
@@ -54,6 +55,7 @@ directory_structure = [
     eroded_nifti_t2_3d_dir,
     eroded_nifti_flair_dir,
     powerpoints_dir,
+    dicom_dir,
     processing_dir,
     processing_figures_dir,
     processing_log_dir,

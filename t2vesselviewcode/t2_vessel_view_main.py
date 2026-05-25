@@ -476,6 +476,11 @@ def main():
                 # Default behavior remains unchanged.
                 t1_overview_overlay_specs = overlay_specs[:1] if panel_preset == "quant_map_mm_panel" else overlay_specs
                 t1_overview_overlay_names = overlay_names[:1] if panel_preset == "quant_map_mm_panel" else overlay_names
+                export_overlay_dicom = bool(getattr(commandline.args, "export_overlay_dicom", False))
+                dicom_patient_id = getattr(commandline.args, "dicom_patient_id", None)
+                if export_overlay_dicom and not dicom_patient_id:
+                    dicom_patient_id = input_validation.extract_dicom_patient_id(commandline.args.t1)
+                overlay_label = " + ".join(t1_overview_overlay_names)
                 volume_rendering.render_volume_and_save_pngs_mricrogl(
                     t1_eroded_files,
                     dir_structure.renders_t1_overlay_dir,
@@ -494,7 +499,11 @@ def main():
                     threshold=2,
                     pptx_name="T1_overlay_overview",
                     render_root_dir=dir_structure.renders_t1_overlay_dir,
-                    modality_label="T1 + " + " + ".join(t1_overview_overlay_names)
+                    modality_label="T1 + " + overlay_label,
+                    export_dicom=export_overlay_dicom,
+                    dicom_basename="T1_overlay_overview",
+                    dicom_series_description="T1 erosion render + " + overlay_label + " overlay",
+                    dicom_patient_id=dicom_patient_id
                 )
             except Exception as e:
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
