@@ -200,6 +200,8 @@ def main():
             't2_cor': commandline.args.t2_cor,
             't2_tra': commandline.args.t2_tra,
             'flair': commandline.args.flair,
+            'user_mask': commandline.args.user_mask,
+            'user_mask_structural': commandline.args.user_mask_structural,
             'overlay1': getattr(commandline.args, 'overlay1_path', None),
             'overlay2': getattr(commandline.args, 'overlay2_path', None)
         }
@@ -355,23 +357,30 @@ def main():
     else:
         if not os.path.exists(commandline.args.user_mask):
             raise FileNotFoundError(f"User-provided mask not found: {commandline.args.user_mask}")
-        mask_dims_ok, mask_dims_message = input_validation.validate_mask_voxel_dimensions(
-            commandline.args.user_mask,
-            preprocessed_main_image
-        )
-        if not mask_dims_ok:
-            print(f"[ERROR] {mask_dims_message}")
+        if not commandline.args.user_mask_structural:
             print(
-                "[ERROR] Please provide a mask with matching voxel dimensions "
-                "(voxel size, spacing and grid size) to the main image that is input."
+                "[ERROR] The structural image that the mask was made with, must be supplied when inputting a mask. This is so the structural image can be used for checking against and possibly registration to, the main input image. If you made the mask with the main input image, please just specify the main input image again with -n/--user_mask_structural "
+                "when using -m/--user_mask."
             )
             sys.exit(1)
+        if not os.path.exists(commandline.args.user_mask_structural):
+            raise FileNotFoundError(
+                f"User mask structural image not found: {commandline.args.user_mask_structural}"
+            )
         print(
             "[INFO] User-provided mask detected. "
-            "The user mask will be used for processing. "
+            "The user mask will be affine registered to the preprocessed T1 using the structural image supplied with -n. "
             f"An automatic {auto_method} mask will also be generated for QA comparison."
         )
-        mask_to_input = commandline.args.user_mask
+        try:
+            mask_to_input = preprocess.register_user_mask_to_preprocessed_t1(
+                user_mask_path=commandline.args.user_mask,
+                user_mask_structural_path=commandline.args.user_mask_structural,
+                preprocessed_main_image_path=preprocessed_main_image_path
+            )
+        except Exception as e:
+            print(f"[ERROR] User mask registration failed: {e}")
+            sys.exit(1)
 
         if auto_mask_exists:
             try:
