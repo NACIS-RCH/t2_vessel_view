@@ -234,6 +234,9 @@ parser.add_argument('--dicom-patient-id',
 
 args = parser.parse_args()
 
+if args.user_mask and not args.user_mask_structural:
+    parser.error('-m/--user_mask requires -n/--user_mask_structural.')
+
 # Basic CLI validation for overlay parameters
 for overlay_idx in (1, 2):
     path_val = getattr(args, f'overlay{overlay_idx}_path', None)

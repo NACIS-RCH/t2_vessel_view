@@ -35,6 +35,8 @@ def get_preprocessed_dir(image_type):
         return dir_structure.processed_t2_sag_dir
     elif t == "t2_3d":
         return dir_structure.processed_t2_3d_dir
+    elif t in ("user_mask", "user_mask_structural"):
+        return dir_structure.processing_mask_dir
     elif t.startswith("t2"):
         return dir_structure.processed_t2_dir
     else:
@@ -255,6 +257,100 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     sitk.WriteImage(registered_im_resc, preprocessed_im_path)
     
     return preprocessed_im_path, registered_im_resc
+
+
+def register_user_mask_to_preprocessed_t1(
+    user_mask_path,
+    user_mask_structural_path,
+    preprocessed_main_image_path
+):
+    """
+    Register a user-provided mask to the preprocessed T1 image.
+
+    The mask is first checked against the structural image it was drawn on. The
+    structural image is then affine registered to the preprocessed T1, and the
+    same transform is applied to the mask with nearest-neighbor interpolation.
+
+    Parameters
+    ----------
+    user_mask_path : str
+        Path to the user-provided binary mask.
+    user_mask_structural_path : str
+        Path to the structural image that has the same grid as the mask.
+    preprocessed_main_image_path : str
+        Path to the preprocessed T1 image used as the fixed registration target.
+
+    Returns
+    -------
+    str
+        Path to the registered user mask in preprocessed T1 space.
+    """
+    from . import input_validation
+
+    output_dir = dir_structure.processing_mask_dir
+    os.makedirs(output_dir, exist_ok=True)
+
+    if TEST_MODE:
+        dummy_path = os.path.join(output_dir, "registered_user_mask_to_preprocessed_t1.nii.gz")
+        dummy_mask = sitk.Image([100, 100, 100], sitk.sitkUInt8)
+        sitk.WriteImage(dummy_mask, dummy_path)
+        return dummy_path
+
+    print("[INFO] Preparing user mask and structural reference for registration")
+    user_mask_ro_path = convert_and_reorient(user_mask_path, "user_mask")
+    user_mask_structural_ro_path = convert_and_reorient(
+        user_mask_structural_path,
+        "user_mask_structural"
+    )
+
+    user_mask_structural_img = sitk.ReadImage(user_mask_structural_ro_path)
+    mask_dims_ok, mask_dims_message = input_validation.validate_mask_voxel_dimensions(
+        user_mask_ro_path,
+        user_mask_structural_img
+    )
+    if not mask_dims_ok:
+        raise ValueError(
+            f"{mask_dims_message} The user mask must match the structural image supplied with -n."
+        )
+
+    structural_img = sitk.ReadImage(user_mask_structural_ro_path)
+    structural_float = sitk.Cast(structural_img, sitk.sitkFloat32)
+    structural_n4 = sitk.N4BiasFieldCorrection(structural_float)
+    structural_n4_path = os.path.join(output_dir, "user_mask_structural_n4.nii.gz")
+    sitk.WriteImage(structural_n4, structural_n4_path)
+    utils.write_debug_image(
+        structural_n4,
+        "user_mask_structural_n4_debug.nii.gz",
+        output_dir
+    )
+
+    print("[INFO] Affine registering user mask structural image to preprocessed T1")
+    fixed_t1 = utils.read_ants_image(preprocessed_main_image_path)
+    moving_structural = utils.read_ants_image(structural_n4_path)
+    structural_to_t1_registration = ants.registration(
+        fixed=fixed_t1,
+        moving=moving_structural,
+        type_of_transform="Affine"
+    )
+
+    print("[INFO] Applying structural-to-T1 transform to user mask with nearest-neighbor interpolation")
+    moving_mask = utils.read_ants_image(user_mask_ro_path)
+    registered_mask = ants.apply_transforms(
+        fixed=fixed_t1,
+        moving=moving_mask,
+        transformlist=structural_to_t1_registration["fwdtransforms"],
+        interpolator="nearestNeighbor"
+    )
+
+    registered_mask_path = os.path.join(output_dir, "registered_user_mask_to_preprocessed_t1.nii.gz")
+    ants.image_write(registered_mask, registered_mask_path)
+
+    # Ensure the saved mask is binary after interpolation and readable by SimpleITK downstream.
+    registered_mask_sitk = sitk.ReadImage(registered_mask_path)
+    registered_mask_binary = sitk.Cast(registered_mask_sitk > 0.5, sitk.sitkUInt8)
+    sitk.WriteImage(registered_mask_binary, registered_mask_path)
+
+    return registered_mask_path
 
 def postprocess_t2(preprocessed_t2_input_path, preprocessed_imagetype_string):
     """
