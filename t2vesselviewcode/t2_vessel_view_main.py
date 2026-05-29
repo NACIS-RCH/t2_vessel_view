@@ -171,6 +171,15 @@ def _select_qmm_eroded_subset(nifti_paths, main_depth_int):
     return selected
 
 
+def _iter_chunks(items, chunk_size):
+    """Yield consecutive chunks from a list."""
+    if chunk_size <= 0:
+        yield items
+        return
+    for start_idx in range(0, len(items), chunk_size):
+        yield items[start_idx:start_idx + chunk_size]
+
+
 def main():
     if not run_dependency_preflight():
         sys.exit(1)
@@ -490,18 +499,26 @@ def main():
                 if export_overlay_dicom and not dicom_patient_id:
                     dicom_patient_id = input_validation.extract_dicom_patient_id(commandline.args.t1)
                 overlay_label = " + ".join(t1_overview_overlay_names)
-                volume_rendering.render_volume_and_save_pngs_mricrogl(
-                    t1_eroded_files,
-                    dir_structure.renders_t1_overlay_dir,
-                    angles=[[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
-                            [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']],
-                    window=t1_window,
-                    image_size=(1200,1200),
-                    mricrogl_path=mricrogl_exec,
-                    template_filename="mricrogl_T1_renders.py",
-                    camera_distance='auto',
-                    overlays=t1_overview_overlay_specs
-                )
+                overlay_angles = [[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
+                                  [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']]
+                overlay_render_batch_size = 5
+                overlay_batches = list(_iter_chunks(t1_eroded_files, overlay_render_batch_size))
+                for batch_idx, t1_eroded_batch in enumerate(overlay_batches, start=1):
+                    print(
+                        f"[INFO] Rendering T1 overlay batch {batch_idx}/{len(overlay_batches)} "
+                        f"({len(t1_eroded_batch)} erosion level(s))."
+                    )
+                    volume_rendering.render_volume_and_save_pngs_mricrogl(
+                        t1_eroded_batch,
+                        dir_structure.renders_t1_overlay_dir,
+                        angles=overlay_angles,
+                        window=t1_window,
+                        image_size=(1200,1200),
+                        mricrogl_path=mricrogl_exec,
+                        template_filename="mricrogl_T1_renders.py",
+                        camera_distance='auto',
+                        overlays=t1_overview_overlay_specs
+                    )
                 png_postprocess.run_preset_t1_overview_per_depth(
                     add_orientation_labels=True,
                     background_rgb=[0,0,0],
