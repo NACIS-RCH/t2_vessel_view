@@ -247,7 +247,7 @@ def _evaluate_camera_distance_once(nifti_path, angles, image_size, mricrogl_path
             # If nothing rendered, treat as too_close to nudge outward safely
             return True, False
 
-        # Evaluate margins across all PNGs
+        # Evaluate margins across all PNGs a;erofijse;rogtijbsrh
         any_zero_edge = False
         all_edges_gt_20 = True
         for p in pngs:
