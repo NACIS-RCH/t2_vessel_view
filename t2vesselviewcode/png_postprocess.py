@@ -458,6 +458,8 @@ def export_png_series_to_dicom_folder(
     dicom_basename: str,
     series_description: str,
     patient_id: Optional[str] = None,
+    patient_name: Optional[str] = None,
+    study_date: Optional[str] = None,
     output_root: Optional[str] = None
 ) -> List[str]:
     """Export stitched PNG panels as a DICOM series.
@@ -508,14 +510,14 @@ def export_png_series_to_dicom_folder(
         ds.FrameOfReferenceUID = frame_of_reference_uid
         ds.Modality = "OT"
         ds.PatientID = patient_id or ""
-        ds.PatientName = ""
+        ds.PatientName = patient_name or ""
         ds.StudyDescription = ""
         ds.SeriesDescription = series_description
         ds.ImageComments = "Postprocessed T1 and coregistered overlay image, non-quantitative"
         ds.InstanceNumber = instance_number
         ds.ContentDate = now.strftime("%Y%m%d")
         ds.ContentTime = now.strftime("%H%M%S")
-        ds.StudyDate = ds.ContentDate
+        ds.StudyDate = study_date or ""
         ds.StudyTime = ds.ContentTime
         ds.SeriesDate = ds.ContentDate
         ds.SeriesTime = ds.ContentTime
@@ -550,7 +552,9 @@ def run_preset_t1_overview_per_depth(
     export_dicom: bool = False,
     dicom_basename: Optional[str] = None,
     dicom_series_description: Optional[str] = None,
-    dicom_patient_id: Optional[str] = None
+    dicom_patient_id: Optional[str] = None,
+    dicom_patient_name: Optional[str] = None,
+    dicom_study_date: Optional[str] = None
 ) -> None:
     """Stitch T1 multi-angle panels per erosion depth and export PPTX.
 
@@ -631,7 +635,9 @@ def run_preset_t1_overview_per_depth(
             out_panel_dir,
             dicom_basename or pptx_name,
             dicom_series_description or pptx_name,
-            patient_id=dicom_patient_id
+            patient_id=dicom_patient_id,
+            patient_name=dicom_patient_name,
+            study_date=dicom_study_date
         )
 
 

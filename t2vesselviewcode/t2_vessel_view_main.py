@@ -495,9 +495,14 @@ def main():
                 t1_overview_overlay_specs = overlay_specs[:1] if panel_preset == "quant_map_mm_panel" else overlay_specs
                 t1_overview_overlay_names = overlay_names[:1] if panel_preset == "quant_map_mm_panel" else overlay_names
                 export_overlay_dicom = bool(getattr(commandline.args, "export_overlay_dicom", False))
-                dicom_patient_id = getattr(commandline.args, "dicom_patient_id", None)
-                if export_overlay_dicom and not dicom_patient_id:
-                    dicom_patient_id = input_validation.extract_dicom_patient_id(commandline.args.t1)
+                dicom_metadata = {}
+                if export_overlay_dicom:
+                    dicom_metadata = input_validation.extract_dicom_metadata(
+                        commandline.args.dicom_metadata_source
+                    )
+                    dicom_patient_id_override = getattr(commandline.args, "dicom_patient_id", None)
+                    if dicom_patient_id_override:
+                        dicom_metadata["patient_id"] = dicom_patient_id_override
                 overlay_label = " + ".join(t1_overview_overlay_names)
                 overlay_angles = [[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
                                   [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']]
@@ -529,7 +534,9 @@ def main():
                     export_dicom=export_overlay_dicom,
                     dicom_basename="T1_overlay_overview",
                     dicom_series_description="T1 erosion render + " + overlay_label + " overlay",
-                    dicom_patient_id=dicom_patient_id
+                    dicom_patient_id=dicom_metadata.get("patient_id"),
+                    dicom_patient_name=dicom_metadata.get("patient_name"),
+                    dicom_study_date=dicom_metadata.get("study_date")
                 )
             except Exception as e:
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")

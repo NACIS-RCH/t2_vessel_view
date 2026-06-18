@@ -1,4 +1,5 @@
 import argparse
+import os
 
 parser = argparse.ArgumentParser(description='A tool for generating Vessel Maps using T2-weighted MRI', 
             epilog='Version 1, Bonnie Alexander 2023')
@@ -225,8 +226,15 @@ parser.add_argument('--dicom-patient-id',
             metavar='dicom_patient_id',
             type=str,
             action='store',
-            help='Optional PatientID to write into generated DICOM Secondary Capture files. If omitted, PatientID is copied from source DICOM T1 input when available.',
+            help='Optional PatientID override for generated DICOM Secondary Capture files. If omitted, PatientID is copied from --dicom-metadata-source.',
             dest='dicom_patient_id')
+
+parser.add_argument('--dicom-metadata-source',
+            metavar='dicom_metadata_source',
+            type=str,
+            action='store',
+            help='DICOM file or folder to copy PatientName, PatientID, and StudyDate from for generated overlay DICOM output.',
+            dest='dicom_metadata_source')
 
 #parser.add_argument('-e', type=str, action='store', nargs=argparse.REMAINDER, help='One or more extra images. This has to be the last option specified, i.e., cant put the output directory after this.', required=True, dest='files')
 
@@ -285,5 +293,11 @@ if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
 
 if args.export_overlay_dicom and not (args.overlay1_path or args.overlay2_path):
     parser.error('--export-overlay-dicom requires --overlay1-path or --overlay2-path.')
+
+if args.export_overlay_dicom:
+    if not args.dicom_metadata_source:
+        parser.error('--export-overlay-dicom requires --dicom-metadata-source, please provide a DICOM file or folder.')
+    if not os.path.exists(args.dicom_metadata_source):
+        parser.error(f'--dicom-metadata-source not found: {args.dicom_metadata_source}')
 
 
