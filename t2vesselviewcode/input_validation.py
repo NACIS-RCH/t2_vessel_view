@@ -58,27 +58,40 @@ def detect_image_format(file_path: str) -> str:
             raise ValueError(f"Could not determine format of {file_path}")
 
 
-def extract_dicom_patient_id(input_path: str) -> Optional[str]:
-    """Return PatientID from a DICOM file or folder, if one is available."""
-    candidate_paths = []
+def _dicom_candidate_paths(input_path: str) -> List[str]:
+    """Return candidate file paths from a DICOM file or folder."""
     if os.path.isdir(input_path):
+        candidate_paths = []
         for root, _, files in os.walk(input_path):
             for filename in sorted(files):
                 candidate_paths.append(os.path.join(root, filename))
-            if candidate_paths:
-                break
-    else:
-        candidate_paths.append(input_path)
+        return candidate_paths
+    return [input_path]
 
-    for path in candidate_paths:
+
+def extract_dicom_metadata(input_path: str) -> Dict[str, str]:
+    """Return PatientID, PatientName, and StudyDate from a DICOM file or folder."""
+    for path in _dicom_candidate_paths(input_path):
         try:
             ds = pydicom.dcmread(path, stop_before_pixels=True)
-            patient_id = getattr(ds, "PatientID", "")
-            if patient_id:
-                return str(patient_id)
+            return {
+                "patient_id": str(getattr(ds, "PatientID", "") or ""),
+                "patient_name": str(getattr(ds, "PatientName", "") or ""),
+                "study_date": str(getattr(ds, "StudyDate", "") or ""),
+            }
         except Exception:
             continue
-    return None
+    raise ValueError(f"Could not read DICOM metadata from: {input_path}")
+
+
+def extract_dicom_patient_id(input_path: str) -> Optional[str]:
+    """Return PatientID from a DICOM file or folder, if one is available."""
+    try:
+        metadata = extract_dicom_metadata(input_path)
+        patient_id = metadata.get("patient_id", "")
+        return patient_id if patient_id else None
+    except ValueError:
+        return None
 
 def validate_image_dimensions(image: sitk.Image) -> Tuple[bool, str]:
     """

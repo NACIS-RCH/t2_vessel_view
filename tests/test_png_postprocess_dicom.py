@@ -9,6 +9,8 @@ import unittest
 
 from PIL import Image
 import pydicom
+from pydicom.dataset import FileDataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian, SecondaryCaptureImageStorage, generate_uid
 
 
 class TestPngPostprocessDicom(unittest.TestCase):
@@ -36,17 +38,44 @@ class TestPngPostprocessDicom(unittest.TestCase):
         Image.new("RGB", (8, 6), color=color).save(path)
         return path
 
+    def _save_test_metadata_dicom(self, name="metadata_source.dcm"):
+        path = os.path.join(self.test_dir, name)
+        sop_instance_uid = generate_uid()
+
+        file_meta = FileMetaDataset()
+        file_meta.FileMetaInformationVersion = b'\x00\x01'
+        file_meta.MediaStorageSOPClassUID = SecondaryCaptureImageStorage
+        file_meta.MediaStorageSOPInstanceUID = sop_instance_uid
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        file_meta.ImplementationClassUID = generate_uid()
+
+        ds = FileDataset(path, {}, file_meta=file_meta, preamble=b'\0' * 128)
+        ds.is_little_endian = True
+        ds.is_implicit_VR = False
+        ds.SOPClassUID = SecondaryCaptureImageStorage
+        ds.SOPInstanceUID = sop_instance_uid
+        ds.PatientID = "UR12345"
+        ds.PatientName = "Test^Patient"
+        ds.StudyDate = "20240131"
+        ds.Modality = "PT"
+        pydicom.dcmwrite(path, ds, write_like_original=False)
+        return path
+
     def test_export_png_series_to_dicom_folder(self):
+        from t2vesselviewcode.input_validation import extract_dicom_metadata
         from t2vesselviewcode.png_postprocess import export_png_series_to_dicom_folder
 
         self._save_test_png("concat_001.png", (255, 0, 0))
         self._save_test_png("concat_000.png", (0, 255, 0))
+        metadata = extract_dicom_metadata(self._save_test_metadata_dicom())
 
         saved_paths = export_png_series_to_dicom_folder(
             self.png_dir,
             "T1_overlay_overview",
             "T1 erosion render + PET overlay",
-            patient_id="TEST123",
+            patient_id=metadata["patient_id"],
+            patient_name=metadata["patient_name"],
+            study_date=metadata["study_date"],
             output_root=self.dicom_root,
         )
 
@@ -58,12 +87,14 @@ class TestPngPostprocessDicom(unittest.TestCase):
 
         self.assertEqual(first.Modality, "OT")
         self.assertEqual(first.SOPClassUID.name, "Secondary Capture Image Storage")
-        self.assertEqual(first.PatientID, "TEST123")
+        self.assertEqual(first.PatientID, "UR12345")
+        self.assertEqual(str(first.PatientName), "Test^Patient")
+        self.assertEqual(first.StudyDate, "20240131")
         self.assertEqual(first.SeriesDescription, "T1 erosion render + PET overlay")
         self.assertFalse(hasattr(first, "ProtocolName"))
         self.assertEqual(
             first.ImageComments,
-            "postprocessed T1 and registered overlay image, non-quantitative"
+            "Postprocessed T1 and coregistered overlay image, non-quantitative"
         )
         self.assertEqual(first.InstanceNumber, 1)
         self.assertEqual(second.InstanceNumber, 2)
