@@ -208,6 +208,134 @@ def _load_annotation_font(font_size: int):
     return ImageFont.load_default()
 
 
+def _format_colorbar_value(value) -> str:
+    """Format a colorbar endpoint without commas or scientific notation."""
+    try:
+        val = float(value)
+    except Exception:
+        # If the value is not numeric, keep it as text rather than failing.
+        return str(value)
+    # Use fixed decimal formatting so labels never show as 1e+04 or 1,000.
+    text = f"{val:.6f}".rstrip("0").rstrip(".")
+    return text if text else "0"
+
+
+def _make_jet_colorbar_image(width: int, height: int) -> PILImage.Image:
+    """Create a vertical matplotlib jet colorbar image, high values at top."""
+    from matplotlib import cm
+
+    # Use matplotlib's built-in 'jet' map as the first supported MVP colormap.
+    cmap = cm.get_cmap("jet")
+    # Make a tiny RGB image that will later be pasted onto the stitched panel.
+    bar = PILImage.new("RGB", (width, height))
+    denom = max(1, height - 1)
+    for y in range(height):
+        # Top of the bar should represent the maximum value, bottom the minimum.
+        frac = 1.0 - (y / denom)
+        r, g, b, _ = cmap(frac)
+        rgb = (int(r * 255), int(g * 255), int(b * 255))
+        # Fill this whole row with the same colour to create a vertical gradient.
+        for x in range(width):
+            bar.putpixel((x, y), rgb)
+    return bar
+
+
+def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: Dict) -> None:
+    """Add a compact overlay colorbar legend to the top-right of a stitched PNG.
+
+    overlay_spec is a small dictionary from the overlay CLI values, for example:
+    {"name": "PET", "color": "jet", "min": 2000, "max": 23000}.
+    This function edits one final stitched panel image, not the individual
+    MRIcroGL view screenshots.
+    """
+    color_name = str(overlay_spec.get("color", "")).lower()
+    if color_name != "jet":
+        # Keep first version narrow so the displayed legend matches the rendered overlay.
+        print(
+            f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
+            f"only 'jet' is currently supported, got '{color_name}'."
+        )
+        return
+
+    # Open the stitched panel as RGB so drawing and pasted colours are predictable.
+    img = PILImage.open(path_in).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+
+    # Scale text with image height so it stays readable across output sizes.
+    font_size = max(12, int(h * 0.018))
+    value_font_size = max(11, int(h * 0.016))
+    name_font = _load_annotation_font(font_size)
+    value_font = _load_annotation_font(value_font_size)
+
+    # Text shown in the legend: overlay name above, max/min beside the bar.
+    overlay_name = str(overlay_spec.get("name", "Overlay"))
+    min_text = _format_colorbar_value(overlay_spec.get("min", ""))
+    max_text = _format_colorbar_value(overlay_spec.get("max", ""))
+
+    # Size the whole legend relative to the panel; top-right usually has black background.
+    margin = max(12, int(min(w, h) * 0.02))
+    gap = max(4, int(min(w, h) * 0.008))
+    bar_width = max(12, int(w * 0.012))
+    bar_height = max(70, int(h * 0.16))
+
+    try:
+        # Measure text so the label block and colour bar can be aligned neatly.
+        name_bbox = draw.textbbox((0, 0), overlay_name, font=name_font)
+        max_bbox = draw.textbbox((0, 0), max_text, font=value_font)
+        min_bbox = draw.textbbox((0, 0), min_text, font=value_font)
+        name_w = name_bbox[2] - name_bbox[0]
+        name_h = name_bbox[3] - name_bbox[1]
+        max_w = max_bbox[2] - max_bbox[0]
+        max_h = max_bbox[3] - max_bbox[1]
+        min_w = min_bbox[2] - min_bbox[0]
+        min_h = min_bbox[3] - min_bbox[1]
+    except Exception:
+        # Older Pillow versions may not have textbbox, so fall back to textsize.
+        name_w, name_h = draw.textsize(overlay_name, font=name_font)
+        max_w, max_h = draw.textsize(max_text, font=value_font)
+        min_w, min_h = draw.textsize(min_text, font=value_font)
+
+    # Build a small top-right layout:
+    # overlay name centered above; min/max labels on the left; colour bar on the right.
+    value_width = max(max_w, min_w)
+    block_width = max(name_w, value_width + gap + bar_width)
+    block_x = max(margin, w - margin - block_width)
+    name_x = block_x + max(0, (block_width - name_w) // 2)
+    name_y = margin
+    bar_x = block_x + value_width + gap
+    bar_y = name_y + name_h + gap
+
+    # Paste the generated jet gradient and draw a thin white border for visibility.
+    colorbar = _make_jet_colorbar_image(bar_width, bar_height)
+    img.paste(colorbar, (bar_x, bar_y))
+    draw.rectangle(
+        [bar_x - 1, bar_y - 1, bar_x + bar_width, bar_y + bar_height],
+        outline=(255, 255, 255),
+        width=1
+    )
+
+    # Draw all text with a black outline so it remains readable over image content.
+    _draw_text_with_outline(draw, (name_x, name_y), overlay_name, font=name_font)
+    _draw_text_with_outline(draw, (block_x, bar_y - max_h // 2), max_text, font=value_font)
+    _draw_text_with_outline(
+        draw,
+        (block_x, bar_y + bar_height - min_h // 2),
+        min_text,
+        font=value_font
+    )
+    img.save(path_out)
+
+
+def annotate_overlay_colorbar_series(folder: str, overlay_spec: Optional[Dict]) -> None:
+    """Annotate each stitched concat PNG in a folder with an overlay colorbar."""
+    if not overlay_spec:
+        return
+    # These concat_*.png files are the final stitched panels that become PPTX slides.
+    for path in sorted(glob.glob(os.path.join(folder, 'concat_*.png'))):
+        annotate_overlay_colorbar_on_png(path, path, overlay_spec)
+
+
 def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: str) -> None:
     """Annotate a PNG with a modality label centered at the bottom edge.
 
@@ -554,7 +682,8 @@ def run_preset_t1_overview_per_depth(
     dicom_series_description: Optional[str] = None,
     dicom_patient_id: Optional[str] = None,
     dicom_patient_name: Optional[str] = None,
-    dicom_study_date: Optional[str] = None
+    dicom_study_date: Optional[str] = None,
+    overlay_colorbar_spec: Optional[Dict] = None
 ) -> None:
     """Stitch T1 multi-angle panels per erosion depth and export PPTX.
 
@@ -627,6 +756,7 @@ def run_preset_t1_overview_per_depth(
     top_lists = [angle_to_list['left'], angle_to_list['right']]
     bottom_lists = [angle_to_list['superior'], angle_to_list['inferior'], angle_to_list['anterior'], angle_to_list['posterior']]
     concat_two_rows(n, top_lists, bottom_lists, out_panel_dir)
+    annotate_overlay_colorbar_series(out_panel_dir, overlay_colorbar_spec)
 
     # Export PPTX with one slide per stitched panel
     export_pptx_from_folder(out_panel_dir, pptx_name)

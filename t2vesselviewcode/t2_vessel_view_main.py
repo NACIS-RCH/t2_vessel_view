@@ -504,6 +504,14 @@ def main():
                     if dicom_patient_id_override:
                         dicom_metadata["patient_id"] = dicom_patient_id_override
                 overlay_label = " + ".join(t1_overview_overlay_names)
+                overlay_colorbar_spec = None
+                if t1_overview_overlay_specs:
+                    overlay_colorbar_spec = {
+                        "name": t1_overview_overlay_names[0],
+                        "color": t1_overview_overlay_specs[0].get("color"),
+                        "min": t1_overview_overlay_specs[0].get("min"),
+                        "max": t1_overview_overlay_specs[0].get("max"),
+                    }
                 overlay_angles = [[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
                                   [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']]
                 overlay_render_batch_size = 5
@@ -536,7 +544,8 @@ def main():
                     dicom_series_description="T1 erosion render + " + overlay_label + " overlay",
                     dicom_patient_id=dicom_metadata.get("patient_id"),
                     dicom_patient_name=dicom_metadata.get("patient_name"),
-                    dicom_study_date=dicom_metadata.get("study_date")
+                    dicom_study_date=dicom_metadata.get("study_date"),
+                    overlay_colorbar_spec=overlay_colorbar_spec
                 )
             except Exception as e:
                 print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
