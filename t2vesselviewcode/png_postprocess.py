@@ -276,8 +276,9 @@ def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: 
     # Size the whole legend relative to the panel; top-right usually has black background.
     margin = max(12, int(min(w, h) * 0.02))
     gap = max(4, int(min(w, h) * 0.008))
-    bar_width = max(12, int(w * 0.012))
-    bar_height = max(70, int(h * 0.16))
+    name_to_bar_gap = gap + 3
+    bar_width = max(6, int(w * 0.006))
+    bar_height = max(35, int(h * 0.08))
 
     try:
         # Measure text so the label block and colour bar can be aligned neatly.
@@ -304,7 +305,7 @@ def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: 
     name_x = block_x + max(0, (block_width - name_w) // 2)
     name_y = margin
     bar_x = block_x + value_width + gap
-    bar_y = name_y + name_h + gap
+    bar_y = name_y + name_h + name_to_bar_gap
 
     # Paste the generated jet gradient and draw a thin white border for visibility.
     colorbar = _make_jet_colorbar_image(bar_width, bar_height)
