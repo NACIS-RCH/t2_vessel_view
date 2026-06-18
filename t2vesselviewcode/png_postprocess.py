@@ -590,6 +590,7 @@ def export_png_series_to_dicom_folder(
     patient_name: Optional[str] = None,
     study_date: Optional[str] = None,
     study_time: Optional[str] = None,
+    study_instance_uid: Optional[str] = None,
     output_root: Optional[str] = None
 ) -> List[str]:
     """Export stitched PNG panels as a DICOM series.
@@ -608,9 +609,8 @@ def export_png_series_to_dicom_folder(
     _ensure_dir(output_dir)
 
     now = datetime.now()
-    study_uid = generate_uid()
+    study_uid = study_instance_uid or generate_uid()
     series_uid = generate_uid()
-    frame_of_reference_uid = generate_uid()
     saved_paths = []
 
     for instance_number, png_path in enumerate(png_paths, start=1):
@@ -637,7 +637,6 @@ def export_png_series_to_dicom_folder(
         ds.SOPInstanceUID = sop_instance_uid
         ds.StudyInstanceUID = study_uid
         ds.SeriesInstanceUID = series_uid
-        ds.FrameOfReferenceUID = frame_of_reference_uid
         ds.Modality = "OT"
         ds.PatientID = patient_id or ""
         ds.PatientName = patient_name or ""
@@ -686,6 +685,7 @@ def run_preset_t1_overview_per_depth(
     dicom_patient_name: Optional[str] = None,
     dicom_study_date: Optional[str] = None,
     dicom_study_time: Optional[str] = None,
+    dicom_study_instance_uid: Optional[str] = None,
     overlay_colorbar_spec: Optional[Dict] = None
 ) -> None:
     """Stitch T1 multi-angle panels per erosion depth and export PPTX.
@@ -771,7 +771,8 @@ def run_preset_t1_overview_per_depth(
             patient_id=dicom_patient_id,
             patient_name=dicom_patient_name,
             study_date=dicom_study_date,
-            study_time=dicom_study_time
+            study_time=dicom_study_time,
+            study_instance_uid=dicom_study_instance_uid
         )
 
 
