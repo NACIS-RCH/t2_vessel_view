@@ -545,6 +545,7 @@ def main():
                     dicom_patient_id=dicom_metadata.get("patient_id"),
                     dicom_patient_name=dicom_metadata.get("patient_name"),
                     dicom_study_date=dicom_metadata.get("study_date"),
+                    dicom_study_time=dicom_metadata.get("study_time"),
                     overlay_colorbar_spec=overlay_colorbar_spec
                 )
             except Exception as e:
