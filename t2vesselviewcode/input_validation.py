@@ -79,6 +79,7 @@ def extract_dicom_metadata(input_path: str) -> Dict[str, str]:
                 "patient_name": str(getattr(ds, "PatientName", "") or ""),
                 "study_date": str(getattr(ds, "StudyDate", "") or ""),
                 "study_time": str(getattr(ds, "StudyTime", "") or ""),
+                "study_instance_uid": str(getattr(ds, "StudyInstanceUID", "") or ""),
             }
         except Exception:
             continue

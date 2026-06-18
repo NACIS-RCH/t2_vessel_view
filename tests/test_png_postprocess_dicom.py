@@ -41,6 +41,7 @@ class TestPngPostprocessDicom(unittest.TestCase):
     def _save_test_metadata_dicom(self, name="metadata_source.dcm"):
         path = os.path.join(self.test_dir, name)
         sop_instance_uid = generate_uid()
+        study_instance_uid = generate_uid()
 
         file_meta = FileMetaDataset()
         file_meta.FileMetaInformationVersion = b'\x00\x01'
@@ -54,6 +55,7 @@ class TestPngPostprocessDicom(unittest.TestCase):
         ds.is_implicit_VR = False
         ds.SOPClassUID = SecondaryCaptureImageStorage
         ds.SOPInstanceUID = sop_instance_uid
+        ds.StudyInstanceUID = study_instance_uid
         ds.PatientID = "UR12345"
         ds.PatientName = "Test^Patient"
         ds.StudyDate = "20240131"
@@ -78,6 +80,7 @@ class TestPngPostprocessDicom(unittest.TestCase):
             patient_name=metadata["patient_name"],
             study_date=metadata["study_date"],
             study_time=metadata["study_time"],
+            study_instance_uid=metadata["study_instance_uid"],
             output_root=self.dicom_root,
         )
 
@@ -93,6 +96,8 @@ class TestPngPostprocessDicom(unittest.TestCase):
         self.assertEqual(str(first.PatientName), "Test^Patient")
         self.assertEqual(first.StudyDate, "20240131")
         self.assertEqual(first.StudyTime, "093015")
+        self.assertEqual(first.StudyInstanceUID, metadata["study_instance_uid"])
+        self.assertFalse(hasattr(first, "FrameOfReferenceUID"))
         self.assertEqual(first.SeriesDescription, "T1 erosion render + PET overlay")
         self.assertFalse(hasattr(first, "ProtocolName"))
         self.assertEqual(
