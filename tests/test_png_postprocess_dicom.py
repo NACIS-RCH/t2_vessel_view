@@ -57,6 +57,7 @@ class TestPngPostprocessDicom(unittest.TestCase):
         ds.PatientID = "UR12345"
         ds.PatientName = "Test^Patient"
         ds.StudyDate = "20240131"
+        ds.StudyTime = "093015"
         ds.Modality = "PT"
         pydicom.dcmwrite(path, ds, write_like_original=False)
         return path
@@ -76,6 +77,7 @@ class TestPngPostprocessDicom(unittest.TestCase):
             patient_id=metadata["patient_id"],
             patient_name=metadata["patient_name"],
             study_date=metadata["study_date"],
+            study_time=metadata["study_time"],
             output_root=self.dicom_root,
         )
 
@@ -90,6 +92,7 @@ class TestPngPostprocessDicom(unittest.TestCase):
         self.assertEqual(first.PatientID, "UR12345")
         self.assertEqual(str(first.PatientName), "Test^Patient")
         self.assertEqual(first.StudyDate, "20240131")
+        self.assertEqual(first.StudyTime, "093015")
         self.assertEqual(first.SeriesDescription, "T1 erosion render + PET overlay")
         self.assertFalse(hasattr(first, "ProtocolName"))
         self.assertEqual(

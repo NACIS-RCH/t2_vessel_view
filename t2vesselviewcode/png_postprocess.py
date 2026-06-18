@@ -589,6 +589,7 @@ def export_png_series_to_dicom_folder(
     patient_id: Optional[str] = None,
     patient_name: Optional[str] = None,
     study_date: Optional[str] = None,
+    study_time: Optional[str] = None,
     output_root: Optional[str] = None
 ) -> List[str]:
     """Export stitched PNG panels as a DICOM series.
@@ -647,7 +648,7 @@ def export_png_series_to_dicom_folder(
         ds.ContentDate = now.strftime("%Y%m%d")
         ds.ContentTime = now.strftime("%H%M%S")
         ds.StudyDate = study_date or ""
-        ds.StudyTime = ds.ContentTime
+        ds.StudyTime = study_time or ""
         ds.SeriesDate = ds.ContentDate
         ds.SeriesTime = ds.ContentTime
         ds.Manufacturer = ""
@@ -684,6 +685,7 @@ def run_preset_t1_overview_per_depth(
     dicom_patient_id: Optional[str] = None,
     dicom_patient_name: Optional[str] = None,
     dicom_study_date: Optional[str] = None,
+    dicom_study_time: Optional[str] = None,
     overlay_colorbar_spec: Optional[Dict] = None
 ) -> None:
     """Stitch T1 multi-angle panels per erosion depth and export PPTX.
@@ -768,7 +770,8 @@ def run_preset_t1_overview_per_depth(
             dicom_series_description or pptx_name,
             patient_id=dicom_patient_id,
             patient_name=dicom_patient_name,
-            study_date=dicom_study_date
+            study_date=dicom_study_date,
+            study_time=dicom_study_time
         )
 
 

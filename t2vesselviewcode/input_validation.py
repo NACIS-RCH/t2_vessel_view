@@ -70,7 +70,7 @@ def _dicom_candidate_paths(input_path: str) -> List[str]:
 
 
 def extract_dicom_metadata(input_path: str) -> Dict[str, str]:
-    """Return PatientID, PatientName, and StudyDate from a DICOM file or folder."""
+    """Return PatientID, PatientName, StudyDate, and StudyTime from a DICOM file or folder."""
     for path in _dicom_candidate_paths(input_path):
         try:
             ds = pydicom.dcmread(path, stop_before_pixels=True)
@@ -78,6 +78,7 @@ def extract_dicom_metadata(input_path: str) -> Dict[str, str]:
                 "patient_id": str(getattr(ds, "PatientID", "") or ""),
                 "patient_name": str(getattr(ds, "PatientName", "") or ""),
                 "study_date": str(getattr(ds, "StudyDate", "") or ""),
+                "study_time": str(getattr(ds, "StudyTime", "") or ""),
             }
         except Exception:
             continue
