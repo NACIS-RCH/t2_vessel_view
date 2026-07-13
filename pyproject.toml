@@ -46,3 +46,4 @@ Tracker = "https://github.com/NACIS-RCH/t2_vessel_view/issues"
 
 [project.scripts]
 t2vesselview = "t2vesselviewcode.t2_vessel_view_main:main" 
+t2vv_render_existing = "t2vesselviewcode.render_existing_cli:main"
