@@ -66,22 +66,25 @@ def run_dependency_preflight():
         )
 
     # FSL commands needed by this pipeline
-    bet_path = shutil.which("bet")
-    robustfov_path = shutil.which("robustfov")
-
-    if bet_path:
-        print(f"[OK] FSL BET found: {bet_path}")
+    if getattr(commandline.args, "render_existing_erosions", False):
+        print("[INFO] Render-existing mode enabled: skipping FSL dependency checks.")
     else:
-        errors.append(
-            "FSL BET command not found ('bet'). Install FSL and ensure it is on PATH."
-        )
+        bet_path = shutil.which("bet")
+        robustfov_path = shutil.which("robustfov")
 
-    if robustfov_path:
-        print(f"[OK] FSL RobustFOV found: {robustfov_path}")
-    else:
-        errors.append(
-            "FSL RobustFOV command not found ('robustfov'). Install FSL and ensure it is on PATH."
-        )
+        if bet_path:
+            print(f"[OK] FSL BET found: {bet_path}")
+        else:
+            errors.append(
+                "FSL BET command not found ('bet'). Install FSL and ensure it is on PATH."
+            )
+
+        if robustfov_path:
+            print(f"[OK] FSL RobustFOV found: {robustfov_path}")
+        else:
+            errors.append(
+                "FSL RobustFOV command not found ('robustfov'). Install FSL and ensure it is on PATH."
+            )
 
     if errors:
         print("[ERROR] Checks for external software dependencies (programs FSL and MRIcroGL) could not find all of the software needed to run this package:")
@@ -186,12 +189,365 @@ def _iter_chunks(items, chunk_size):
         yield items[start_idx:start_idx + chunk_size]
 
 
+def _collect_eroded_files(directory, pattern):
+    """Return sorted eroded NIfTI files from a render source directory."""
+    return sorted(glob.glob(os.path.join(directory, pattern)), key=os.path.basename)
+
+
+def _validate_render_existing_inputs(panel_preset):
+    """Validate that render-only mode has the existing eroded files it needs."""
+    eroded_sets = {
+        "T1": _collect_eroded_files(dir_structure.eroded_nifti_t1_dir, "*eroded*t1*nii.gz"),
+        "FLAIR": _collect_eroded_files(dir_structure.eroded_nifti_flair_dir, "*eroded*flair*nii.gz"),
+        "T2 sagittal": _collect_eroded_files(dir_structure.eroded_nifti_t2_sag_dir, "*eroded*t2_sag*nii.gz"),
+        "T2 coronal": _collect_eroded_files(dir_structure.eroded_nifti_t2_cor_dir, "*eroded*t2_cor*nii.gz"),
+        "T2 transverse": _collect_eroded_files(dir_structure.eroded_nifti_t2_tra_dir, "*eroded*t2_tra*nii.gz"),
+        "T2 3D": _collect_eroded_files(dir_structure.eroded_nifti_t2_3d_dir, "*eroded*t2_3d*nii.gz"),
+    }
+    any_eroded = any(eroded_sets.values())
+    if not any_eroded:
+        raise ValueError(
+            "No eroded NIfTI files were found under the render source folder. "
+            "Expected files under Eroded_nifti/T1, FLAIR, or T2_* subfolders."
+        )
+
+    has_overlay = bool(getattr(commandline.args, "overlay1_path", None) or getattr(commandline.args, "overlay2_path", None))
+    if has_overlay and not eroded_sets["T1"]:
+        raise ValueError("Render-only T1 overlay output requires existing T1 eroded files.")
+
+    if panel_preset == "quant_map_mm_panel":
+        if not eroded_sets["T1"]:
+            raise ValueError("quant_map_mm_panel render-only mode requires existing T1 eroded files.")
+        if not eroded_sets["FLAIR"]:
+            raise ValueError("quant_map_mm_panel render-only mode requires existing FLAIR eroded files.")
+        requested_qmm_angles = getattr(commandline.args, "qmm_angles", None) or [
+            "left", "right", "anterior", "posterior", "superior", "inferior"
+        ]
+        needs_sag = any(ang in requested_qmm_angles for ang in ("left", "right"))
+        needs_cor = any(ang in requested_qmm_angles for ang in ("anterior", "posterior"))
+        needs_tra = any(ang in requested_qmm_angles for ang in ("superior", "inferior"))
+        has_t2_3d = bool(eroded_sets["T2 3D"])
+        if needs_sag and not (eroded_sets["T2 sagittal"] or has_t2_3d):
+            raise ValueError("quant_map_mm_panel left/right angles require T2 sagittal or fallback T2 3D eroded files.")
+        if needs_cor and not (eroded_sets["T2 coronal"] or has_t2_3d):
+            raise ValueError("quant_map_mm_panel anterior/posterior angles require T2 coronal or fallback T2 3D eroded files.")
+        if needs_tra and not (eroded_sets["T2 transverse"] or has_t2_3d):
+            raise ValueError("quant_map_mm_panel superior/inferior angles require T2 transverse or fallback T2 3D eroded files.")
+
+
+def _run_render_outputs(panel_preset):
+    """Run volume rendering and PNG/PPTX/DICOM post-processing from existing eroded files."""
+    mricrogl_exec = volume_rendering.resolve_mricrogl_executable(
+        os.environ.get('T2VV_MRICROGL_PATH', "")
+    )
+    overlay_specs, overlay_names = _build_cli_overlay_specs(panel_preset=panel_preset)
+    qmm_only_outputs_mode = panel_preset == "quant_map_mm_panel"
+
+    t1_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t1_dir, '*eroded*t1*nii.gz')
+    t2_sag_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_sag_dir, '*eroded*t2_sag*nii.gz')
+    t2_cor_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_cor_dir, '*eroded*t2_cor*nii.gz')
+    t2_tra_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz')
+    t2_3d_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz')
+    flair_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz')
+
+    if t1_eroded_files:
+        t1_window = volume_rendering.compute_series_window(t1_eroded_files, low_pct=2.0, high_pct=90.0)
+        t1_window = volume_rendering.refine_window_vmax_by_saturation_circles(
+            t1_eroded_files,
+            t1_window,
+            radius_mm=1.5,
+            bright_threshold=250,
+            max_valid_circle_locations=4,
+            representative_slices=5,
+            max_images_to_check=3,
+            vmax_growth_factor=1.10,
+            max_iterations=8
+        )
+        if not qmm_only_outputs_mode:
+            volume_rendering.render_volume_and_save_pngs_mricrogl(
+                t1_eroded_files,
+                dir_structure.renders_t1_dir,
+                angles=[[90, 0, 'left'], [270, 0, 'right'], [180, 0, 'anterior'], [0, 0, 'posterior'], [0, 90, 'superior'], [180, -90, 'inferior'],
+                        [270, 180, 'surg_left_lat'], [90, 180, 'surg_right_lat'], [300, 175, 'surg_left_ato'], [60, 175, 'surg_right_ato']],
+                window=t1_window,
+                image_size=(1200, 1200),
+                mricrogl_path=mricrogl_exec,
+                template_filename="mricrogl_T1_renders.py",
+                camera_distance='auto'
+            )
+            try:
+                png_postprocess.run_preset_t1_overview_per_depth(
+                    add_orientation_labels=True,
+                    background_rgb=[0, 0, 0],
+                    threshold=2,
+                    pptx_name="T1_overview"
+                )
+            except Exception as e:
+                print(f"[WARNING] PNG post-processing (T1 overview) skipped: {e}")
+
+        if overlay_specs:
+            try:
+                t1_overview_overlay_specs = overlay_specs[:1] if panel_preset == "quant_map_mm_panel" else overlay_specs
+                t1_overview_overlay_names = overlay_names[:1] if panel_preset == "quant_map_mm_panel" else overlay_names
+                export_overlay_dicom = bool(getattr(commandline.args, "export_overlay_dicom", False))
+                dicom_metadata = {}
+                if export_overlay_dicom:
+                    dicom_metadata = input_validation.extract_dicom_metadata(
+                        commandline.args.dicom_metadata_source
+                    )
+                    dicom_patient_id_override = getattr(commandline.args, "dicom_patient_id", None)
+                    if dicom_patient_id_override:
+                        dicom_metadata["patient_id"] = dicom_patient_id_override
+                overlay_label = " + ".join(t1_overview_overlay_names)
+                overlay_colorbar_spec = None
+                if t1_overview_overlay_specs:
+                    overlay_colorbar_spec = {
+                        "name": t1_overview_overlay_names[0],
+                        "color": t1_overview_overlay_specs[0].get("color"),
+                        "min": t1_overview_overlay_specs[0].get("min"),
+                        "max": t1_overview_overlay_specs[0].get("max"),
+                    }
+                overlay_angles = [[90, 0, 'left'], [270, 0, 'right'], [180, 0, 'anterior'], [0, 0, 'posterior'], [0, 90, 'superior'], [180, -90, 'inferior'],
+                                  [270, 180, 'surg_left_lat'], [90, 180, 'surg_right_lat'], [300, 175, 'surg_left_ato'], [60, 175, 'surg_right_ato']]
+                overlay_batches = list(_iter_chunks(t1_eroded_files, 5))
+                for batch_idx, t1_eroded_batch in enumerate(overlay_batches, start=1):
+                    print(
+                        f"[INFO] Rendering T1 overlay batch {batch_idx}/{len(overlay_batches)} "
+                        f"({len(t1_eroded_batch)} erosion level(s))."
+                    )
+                    volume_rendering.render_volume_and_save_pngs_mricrogl(
+                        t1_eroded_batch,
+                        dir_structure.renders_t1_overlay_dir,
+                        angles=overlay_angles,
+                        window=t1_window,
+                        image_size=(1200, 1200),
+                        mricrogl_path=mricrogl_exec,
+                        template_filename="mricrogl_T1_renders.py",
+                        camera_distance='auto',
+                        overlays=t1_overview_overlay_specs
+                    )
+                png_postprocess.run_preset_t1_overview_per_depth(
+                    add_orientation_labels=True,
+                    background_rgb=[0, 0, 0],
+                    threshold=2,
+                    pptx_name="T1_overlay_overview",
+                    render_root_dir=dir_structure.renders_t1_overlay_dir,
+                    modality_label="T1 + " + overlay_label,
+                    export_dicom=export_overlay_dicom,
+                    dicom_basename="T1_overlay_overview",
+                    dicom_series_description="T1 erosion render + " + overlay_label + " overlay",
+                    dicom_patient_id=dicom_metadata.get("patient_id"),
+                    dicom_patient_name=dicom_metadata.get("patient_name"),
+                    dicom_study_date=dicom_metadata.get("study_date"),
+                    dicom_study_time=dicom_metadata.get("study_time"),
+                    dicom_study_instance_uid=dicom_metadata.get("study_instance_uid"),
+                    overlay_colorbar_spec=overlay_colorbar_spec
+                )
+            except Exception as e:
+                print(f"[WARNING] T1 overlay rendering/post-processing skipped: {e}")
+
+    if (not qmm_only_outputs_mode) and t2_sag_eroded_files:
+        t2_sag_window = volume_rendering.compute_series_window(t2_sag_eroded_files, low_pct=0.3, high_pct=99.75)
+        t2_sag_left_files = [p for p in t2_sag_eroded_files if 't2_sag_left' in os.path.basename(p).lower()]
+        t2_sag_right_files = [p for p in t2_sag_eroded_files if 't2_sag_right' in os.path.basename(p).lower()]
+        t2_sag_generic_files = [p for p in t2_sag_eroded_files if ('t2_sag_left' not in os.path.basename(p).lower() and 't2_sag_right' not in os.path.basename(p).lower())]
+        for files_for_angle, angles in [
+            (t2_sag_left_files or t2_sag_generic_files or t2_sag_right_files, [[90, 0, 'left'], [270, 180, 'surg_left_lat'], [300, 175, 'surg_left_ato']]),
+            (t2_sag_right_files or t2_sag_generic_files or t2_sag_left_files, [[270, 0, 'right'], [90, 180, 'surg_right_lat'], [60, 175, 'surg_right_ato']]),
+        ]:
+            if files_for_angle:
+                volume_rendering.render_volume_and_save_pngs_mricrogl(
+                    files_for_angle,
+                    os.path.join(dir_structure.renders_t2_dir, 'T2_Sag_3D_renders'),
+                    angles=angles,
+                    window=t2_sag_window,
+                    image_size=(1200, 1200),
+                    mricrogl_path=mricrogl_exec,
+                    template_filename="mricrogl_T1_renders.py",
+                    camera_distance='auto'
+                )
+
+    render_specs = [
+        (t2_cor_eroded_files, dir_structure.eroded_nifti_t2_cor_dir, 'T2_Cor_3D_renders', 0.3, 99.75),
+        (t2_tra_eroded_files, dir_structure.eroded_nifti_t2_tra_dir, 'T2_Tra_3D_renders', 0.3, 99.75),
+        (t2_3d_eroded_files, dir_structure.eroded_nifti_t2_3d_dir, 'T2_3D_3D_renders', 0.3, 99.75),
+        (flair_eroded_files, dir_structure.eroded_nifti_flair_dir, 'FLAIR_3D_renders', 7.5, 99.99),
+    ]
+    standard_angles = [[90, 0, 'left'], [270, 0, 'right'], [180, 0, 'anterior'], [0, 0, 'posterior'], [0, 90, 'superior'], [180, -90, 'inferior'],
+                       [270, 180, 'surg_left_lat'], [90, 180, 'surg_right_lat'], [300, 175, 'surg_left_ato'], [60, 175, 'surg_right_ato']]
+    for eroded_files, _source_dir, render_folder, low_pct, high_pct in render_specs:
+        if (not qmm_only_outputs_mode) and eroded_files:
+            window = volume_rendering.compute_series_window(eroded_files, low_pct=low_pct, high_pct=high_pct)
+            out_dir = os.path.join(dir_structure.renders_dir, render_folder)
+            if render_folder.startswith("T2_"):
+                out_dir = os.path.join(dir_structure.renders_t2_dir, render_folder)
+            volume_rendering.render_volume_and_save_pngs_mricrogl(
+                eroded_files,
+                out_dir,
+                angles=standard_angles,
+                window=window,
+                image_size=(1200, 1200),
+                mricrogl_path=mricrogl_exec,
+                template_filename="mricrogl_T1_renders.py",
+                camera_distance='auto'
+            )
+
+    if panel_preset == "quant_map_mm_panel":
+        try:
+            if len(overlay_specs) < 2:
+                raise ValueError("quant_map_mm_panel requires two overlays (--overlay1-path and --overlay2-path).")
+            if not flair_eroded_files:
+                raise ValueError("quant_map_mm_panel requires FLAIR inputs and eroded FLAIR outputs.")
+            qmm_t1_overlays = overlay_specs
+            qmm_non_t1_overlays = overlay_specs[:1]
+            main_depth_int = int(getattr(commandline.args, "qmm_main_erode_depth", 30))
+            main_prefix = f"{main_depth_int:03d}"
+            t1_subset = _select_qmm_eroded_subset(t1_eroded_files, main_depth_int)
+            flair_subset = _select_qmm_eroded_subset(flair_eroded_files, main_depth_int)
+            t2_sag_subset = _select_qmm_eroded_subset(t2_sag_eroded_files, main_depth_int)
+            t2_cor_subset = _select_qmm_eroded_subset(t2_cor_eroded_files, main_depth_int)
+            t2_tra_subset = _select_qmm_eroded_subset(t2_tra_eroded_files, main_depth_int)
+            t2_3d_subset = _select_qmm_eroded_subset(t2_3d_eroded_files, main_depth_int)
+            if not t1_subset:
+                raise ValueError("quant_map_mm_panel: no matching T1 eroded subset found around requested main depth.")
+            if not flair_subset:
+                raise ValueError("quant_map_mm_panel: no matching FLAIR eroded subset found around requested main depth.")
+            print(
+                f"[INFO] Running quant_map_mm_panel preset with main erosion depth {main_depth_int} "
+                f"(prefix {main_prefix})."
+            )
+            t1_win = volume_rendering.compute_series_window(t1_subset, low_pct=2.0, high_pct=90.0)
+            t1_win = volume_rendering.refine_window_vmax_by_saturation_circles(
+                t1_subset,
+                t1_win,
+                radius_mm=1.5,
+                bright_threshold=250,
+                max_valid_circle_locations=4,
+                representative_slices=5,
+                max_images_to_check=3,
+                vmax_growth_factor=1.10,
+                max_iterations=8
+            )
+            flair_win = volume_rendering.compute_series_window(flair_subset, low_pct=7.5, high_pct=99.99)
+            volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                t1_subset,
+                os.path.join(dir_structure.renders_qmm_raw_dir, "T1"),
+                overlays=qmm_t1_overlays,
+                window=t1_win,
+                main_erode_prefix=main_prefix,
+                mricrogl_path=mricrogl_exec
+            )
+            volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                flair_subset,
+                os.path.join(dir_structure.renders_qmm_raw_dir, "FLAIR"),
+                overlays=qmm_non_t1_overlays,
+                window=flair_win,
+                main_erode_prefix=main_prefix,
+                mricrogl_path=mricrogl_exec
+            )
+            for subset, label in [
+                (t2_sag_subset, "T2_sag"),
+                (t2_cor_subset, "T2_cor"),
+                (t2_tra_subset, "T2_tra"),
+                (t2_3d_subset, "T2_3d"),
+            ]:
+                if subset:
+                    t2_win = volume_rendering.compute_series_window(subset, low_pct=0.3, high_pct=99.75)
+                    volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                        subset,
+                        os.path.join(dir_structure.renders_qmm_raw_dir, label),
+                        overlays=qmm_non_t1_overlays,
+                        window=t2_win,
+                        main_erode_prefix=main_prefix,
+                        mricrogl_path=mricrogl_exec
+                    )
+            requested_qmm_angles = getattr(commandline.args, "qmm_angles", None) or [
+                "left", "right", "anterior", "posterior", "superior", "inferior"
+            ]
+            angle_to_t2_source = {}
+            if t2_sag_subset:
+                angle_to_t2_source["left"] = "T2_sag"
+                angle_to_t2_source["right"] = "T2_sag"
+            if t2_cor_subset:
+                angle_to_t2_source["anterior"] = "T2_cor"
+                angle_to_t2_source["posterior"] = "T2_cor"
+            if t2_tra_subset:
+                angle_to_t2_source["superior"] = "T2_tra"
+                angle_to_t2_source["inferior"] = "T2_tra"
+            for ang in requested_qmm_angles:
+                if ang not in angle_to_t2_source and t2_3d_subset:
+                    angle_to_t2_source[ang] = "T2_3d"
+            png_postprocess.run_preset_quant_map_mm_panel(
+                raw_root=dir_structure.renders_qmm_raw_dir,
+                angle_to_t2_source=angle_to_t2_source,
+                qmm_angles=requested_qmm_angles,
+                overlay_names=overlay_names,
+                add_orientation_labels=True,
+                background_rgb=[0, 0, 0],
+                threshold=2,
+                pptx_name="quant_map_mm_panel_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] quant_map_mm_panel preset skipped: {e}")
+
+    has_additional_modalities = any([
+        bool(commandline.args.flair),
+        bool(commandline.args.t2_sag),
+        bool(getattr(commandline.args, 't2_sag_left', None)),
+        bool(getattr(commandline.args, 't2_sag_right', None)),
+        bool(commandline.args.t2_cor),
+        bool(commandline.args.t2_tra),
+        bool(commandline.args.t2_3d),
+    ])
+    if (not qmm_only_outputs_mode) and has_additional_modalities:
+        try:
+            png_postprocess.run_preset_multimodal_by_angle_per_depth(
+                angles=['superior', 'inferior', 'left', 'right', 'anterior', 'posterior'],
+                add_orientation_labels=True,
+                background_rgb=[0, 0, 0],
+                threshold=2,
+                pptx_name="Multimodal_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (multimodal by angle) skipped: {e}")
+    elif not qmm_only_outputs_mode:
+        print("[INFO] Skipping multimodal overview preset: no FLAIR/T2 inputs were provided.")
+
+    if not qmm_only_outputs_mode:
+        try:
+            png_postprocess.run_preset_t2_overview_per_depth(
+                add_orientation_labels=True,
+                background_rgb=[0, 0, 0],
+                threshold=2,
+                pptx_name="T2_overview"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (T2 overview) skipped: {e}")
+
+    if (not qmm_only_outputs_mode) and has_additional_modalities:
+        try:
+            png_postprocess.run_preset_multimodal_other_angles_per_depth(
+                angles=['surg_left_lat', 'surg_right_lat', 'surg_left_ato', 'surg_right_ato'],
+                add_orientation_labels=True,
+                background_rgb=[0, 0, 0],
+                threshold=2,
+                pptx_name="multimodal_overview_other_angles"
+            )
+        except Exception as e:
+            print(f"[WARNING] PNG post-processing (multimodal other angles) skipped: {e}")
+    elif not qmm_only_outputs_mode:
+        print("[INFO] Skipping multimodal surgical preset: no FLAIR/T2 inputs were provided.")
+
+    return 0
+
+
 def main():
     if not run_dependency_preflight():
         sys.exit(1)
 
     auto_method = getattr(commandline.args, "auto_mask_method", "bet")
     panel_preset = getattr(commandline.args, "panel_preset", None)
+    render_existing_erosions = bool(getattr(commandline.args, "render_existing_erosions", False))
 
     # User-friendly rule: FLAIR is optional for BET, required for watershed.
     if auto_method == "watershed" and not commandline.args.flair:
@@ -230,8 +586,23 @@ def main():
     else:
         print("All input files validated successfully!")
 
+    if render_existing_erosions:
+        dir_structure.use_existing_t2vesselview_dir(commandline.args.render_source_dir)
+        print(
+            "[INFO] Render-existing mode: skipping preprocessing, masking, and erosion generation. "
+            f"Reading and writing outputs under: {dir_structure.main_t2vv_dir}"
+        )
+
     # Create directory structure
     dir_structure.create_directories()
+
+    if render_existing_erosions:
+        try:
+            _validate_render_existing_inputs(panel_preset)
+        except Exception as e:
+            print(f"[ERROR] Render-existing validation failed: {e}")
+            sys.exit(1)
+        return _run_render_outputs(panel_preset)
 
 
     ## reorient inputs to standard orientation 

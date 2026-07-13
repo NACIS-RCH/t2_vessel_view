@@ -222,6 +222,18 @@ parser.add_argument('--export-overlay-dicom',
             help='Also export the T1 overlay overview stitched PNG panels as a local DICOM Secondary Capture folder. Requires at least one overlay path.',
             dest='export_overlay_dicom')
 
+parser.add_argument('--render-existing-erosions',
+            action='store_true',
+            help='Skip preprocessing/masking and render from existing eroded NIfTI files in --render-source-dir.',
+            dest='render_existing_erosions')
+
+parser.add_argument('--render-source-dir',
+            metavar='render_source_dir',
+            type=str,
+            action='store',
+            help='Existing T2VesselView output folder to use for render-only mode; outputs are written back into this folder.',
+            dest='render_source_dir')
+
 parser.add_argument('--dicom-patient-id',
             metavar='dicom_patient_id',
             type=str,
@@ -299,5 +311,11 @@ if args.export_overlay_dicom:
         parser.error('--export-overlay-dicom requires --dicom-metadata-source, please provide a DICOM file or folder.')
     if not os.path.exists(args.dicom_metadata_source):
         parser.error(f'--dicom-metadata-source not found: {args.dicom_metadata_source}')
+
+if args.render_existing_erosions:
+    if not args.render_source_dir:
+        parser.error('--render-existing-erosions requires --render-source-dir.')
+    if not os.path.isdir(args.render_source_dir):
+        parser.error(f'--render-source-dir not found or is not a folder: {args.render_source_dir}')
 
 

@@ -59,4 +59,9 @@ setup(
         "Source": "https://github.com/NACIS-RCH/t2_vessel_view",
         "Tracker": "https://github.com/NACIS-RCH/t2_vessel_view/issues",
     },
+    entry_points={
+        "console_scripts": [
+            "t2vv_render_existing=t2vesselviewcode.render_existing_cli:main",
+        ],
+    },
 )
