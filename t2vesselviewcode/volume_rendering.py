@@ -796,6 +796,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
     slice_z_start=5,
     slice_z_end=95,
     slice_h_divisor=100.0,
+    sagittal_slice_end_fraction=0.52,
 ):
     """Render raw slice and erosion screenshots for quant_map_mm_panel workflow."""
     if not nifti_paths:
@@ -853,6 +854,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
         script_text = script_text.replace('__SLICE_Z_START__', str(int(slice_z_start)))
         script_text = script_text.replace('__SLICE_Z_END__', str(int(slice_z_end)))
         script_text = script_text.replace('__SLICE_H_DIVISOR__', str(float(slice_h_divisor)))
+        script_text = script_text.replace('__SAGITTAL_SLICE_END_FRACTION__', str(float(sagittal_slice_end_fraction)))
         script_text = script_text.replace('__SLICE_ANGLES__', slice_angles_literal)
 
         tmp_script = os.path.join(tmp_root, 'mricrogl_qmm_slices.py')
