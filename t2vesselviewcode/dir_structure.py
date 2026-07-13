@@ -8,79 +8,123 @@ from . import commandline
 base_directory = commandline.args.output_dir or commandline.args.mri_dir
 ## define directory structure. add option to change main directory name or add suffix
 
-## specify output directories as variables
-main_t2vv_dir = os.path.join(base_directory, "T2VesselView")
-eroded_nifti_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti")
-eroded_nifti_t1_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T1")
-eroded_nifti_t2_tra_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_Tra")
-eroded_nifti_t2_cor_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_Cor")
-eroded_nifti_t2_sag_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_Sag")
-eroded_nifti_t2_3d_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/T2_3D")
-eroded_nifti_flair_dir = os.path.join(base_directory, "T2VesselView/Eroded_nifti/FLAIR")
-powerpoints_dir = os.path.join(base_directory, "T2VesselView/PowerPoints")
-dicom_dir = os.path.join(base_directory, "T2VesselView/Dicom")
-processing_dir = os.path.join(base_directory, "T2VesselView/Processing")
-processing_figures_dir = os.path.join(base_directory, "T2VesselView/Processing/Figures_for_QA")
-processing_log_dir = os.path.join(base_directory, "T2VesselView/Processing/Log_files")
-processing_mask_dir = os.path.join(base_directory, "T2VesselView/Processing/Masks")
-processed_t1_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T1")
-processed_t2_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2")
-processed_flair_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_FLAIR")
-processed_t2_tra_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_Tra")
-processed_t2_cor_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_Cor")
-processed_t2_sag_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_Sag")
-processed_t2_3d_dir = os.path.join(base_directory, "T2VesselView/Processing/Preprocessed_T2_3D")
-renders_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png")
-renders_t1_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders")
-renders_t1_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders/by_erode_level")
-renders_t1_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_3D_renders/by_angle")
-renders_t1_overlay_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_overlay_3D_renders")
-renders_t1_overlay_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_overlay_3D_renders/by_erode_level")
-renders_t1_overlay_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T1_overlay_3D_renders/by_angle")
-renders_t2_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders")
-renders_t2_erode_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_erode_level")
-renders_t2_angle_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/T2_vessel_3D_renders/by_angle")
-renders_qmm_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/Quant_map_mm_panel")
-renders_qmm_raw_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/Quant_map_mm_panel/raw")
-renders_qmm_stitched_dir = os.path.join(base_directory, "T2VesselView/3D_renders_png/Quant_map_mm_panel/stitched")
+def _set_t2vv_root(t2vv_root):
+    """Set all package output paths from a concrete T2VesselView-style root folder."""
+    global main_t2vv_dir
+    global eroded_nifti_dir
+    global eroded_nifti_t1_dir
+    global eroded_nifti_t2_tra_dir
+    global eroded_nifti_t2_cor_dir
+    global eroded_nifti_t2_sag_dir
+    global eroded_nifti_t2_3d_dir
+    global eroded_nifti_flair_dir
+    global powerpoints_dir
+    global dicom_dir
+    global processing_dir
+    global processing_figures_dir
+    global processing_log_dir
+    global processing_mask_dir
+    global processed_t1_dir
+    global processed_t2_dir
+    global processed_flair_dir
+    global processed_t2_tra_dir
+    global processed_t2_cor_dir
+    global processed_t2_sag_dir
+    global processed_t2_3d_dir
+    global renders_dir
+    global renders_t1_dir
+    global renders_t1_erode_dir
+    global renders_t1_angle_dir
+    global renders_t1_overlay_dir
+    global renders_t1_overlay_erode_dir
+    global renders_t1_overlay_angle_dir
+    global renders_t2_dir
+    global renders_t2_erode_dir
+    global renders_t2_angle_dir
+    global renders_qmm_dir
+    global renders_qmm_raw_dir
+    global renders_qmm_stitched_dir
+    global directory_structure
 
-## specify directories to be made
-directory_structure = [
-    main_t2vv_dir,
-    eroded_nifti_dir,
-    eroded_nifti_t1_dir,
-    eroded_nifti_t2_tra_dir,
-    eroded_nifti_t2_cor_dir,
-    eroded_nifti_t2_sag_dir,
-    eroded_nifti_t2_3d_dir,
-    eroded_nifti_flair_dir,
-    powerpoints_dir,
-    dicom_dir,
-    processing_dir,
-    processing_figures_dir,
-    processing_log_dir,
-    processing_mask_dir,
-    processed_t1_dir,
-    processed_t2_dir,
-    processed_flair_dir,
-    processed_t2_tra_dir,
-    processed_t2_cor_dir,
-    processed_t2_sag_dir,
-    processed_t2_3d_dir,
-    renders_dir,
-    renders_t1_dir,
-    renders_t1_erode_dir,
-    renders_t1_angle_dir,
-    renders_t1_overlay_dir,
-    renders_t1_overlay_erode_dir,
-    renders_t1_overlay_angle_dir,
-    renders_t2_dir,
-    renders_t2_erode_dir,
-    renders_t2_angle_dir,
-    renders_qmm_dir,
-    renders_qmm_raw_dir,
-    renders_qmm_stitched_dir
-]
+    main_t2vv_dir = os.path.abspath(t2vv_root)
+    eroded_nifti_dir = os.path.join(main_t2vv_dir, "Eroded_nifti")
+    eroded_nifti_t1_dir = os.path.join(eroded_nifti_dir, "T1")
+    eroded_nifti_t2_tra_dir = os.path.join(eroded_nifti_dir, "T2_Tra")
+    eroded_nifti_t2_cor_dir = os.path.join(eroded_nifti_dir, "T2_Cor")
+    eroded_nifti_t2_sag_dir = os.path.join(eroded_nifti_dir, "T2_Sag")
+    eroded_nifti_t2_3d_dir = os.path.join(eroded_nifti_dir, "T2_3D")
+    eroded_nifti_flair_dir = os.path.join(eroded_nifti_dir, "FLAIR")
+    powerpoints_dir = os.path.join(main_t2vv_dir, "PowerPoints")
+    dicom_dir = os.path.join(main_t2vv_dir, "Dicom")
+    processing_dir = os.path.join(main_t2vv_dir, "Processing")
+    processing_figures_dir = os.path.join(processing_dir, "Figures_for_QA")
+    processing_log_dir = os.path.join(processing_dir, "Log_files")
+    processing_mask_dir = os.path.join(processing_dir, "Masks")
+    processed_t1_dir = os.path.join(processing_dir, "Preprocessed_T1")
+    processed_t2_dir = os.path.join(processing_dir, "Preprocessed_T2")
+    processed_flair_dir = os.path.join(processing_dir, "Preprocessed_FLAIR")
+    processed_t2_tra_dir = os.path.join(processing_dir, "Preprocessed_T2_Tra")
+    processed_t2_cor_dir = os.path.join(processing_dir, "Preprocessed_T2_Cor")
+    processed_t2_sag_dir = os.path.join(processing_dir, "Preprocessed_T2_Sag")
+    processed_t2_3d_dir = os.path.join(processing_dir, "Preprocessed_T2_3D")
+    renders_dir = os.path.join(main_t2vv_dir, "3D_renders_png")
+    renders_t1_dir = os.path.join(renders_dir, "T1_3D_renders")
+    renders_t1_erode_dir = os.path.join(renders_t1_dir, "by_erode_level")
+    renders_t1_angle_dir = os.path.join(renders_t1_dir, "by_angle")
+    renders_t1_overlay_dir = os.path.join(renders_dir, "T1_overlay_3D_renders")
+    renders_t1_overlay_erode_dir = os.path.join(renders_t1_overlay_dir, "by_erode_level")
+    renders_t1_overlay_angle_dir = os.path.join(renders_t1_overlay_dir, "by_angle")
+    renders_t2_dir = os.path.join(renders_dir, "T2_vessel_3D_renders")
+    renders_t2_erode_dir = os.path.join(renders_t2_dir, "by_erode_level")
+    renders_t2_angle_dir = os.path.join(renders_t2_dir, "by_angle")
+    renders_qmm_dir = os.path.join(renders_dir, "Quant_map_mm_panel")
+    renders_qmm_raw_dir = os.path.join(renders_qmm_dir, "raw")
+    renders_qmm_stitched_dir = os.path.join(renders_qmm_dir, "stitched")
+
+    directory_structure = [
+        main_t2vv_dir,
+        eroded_nifti_dir,
+        eroded_nifti_t1_dir,
+        eroded_nifti_t2_tra_dir,
+        eroded_nifti_t2_cor_dir,
+        eroded_nifti_t2_sag_dir,
+        eroded_nifti_t2_3d_dir,
+        eroded_nifti_flair_dir,
+        powerpoints_dir,
+        dicom_dir,
+        processing_dir,
+        processing_figures_dir,
+        processing_log_dir,
+        processing_mask_dir,
+        processed_t1_dir,
+        processed_t2_dir,
+        processed_flair_dir,
+        processed_t2_tra_dir,
+        processed_t2_cor_dir,
+        processed_t2_sag_dir,
+        processed_t2_3d_dir,
+        renders_dir,
+        renders_t1_dir,
+        renders_t1_erode_dir,
+        renders_t1_angle_dir,
+        renders_t1_overlay_dir,
+        renders_t1_overlay_erode_dir,
+        renders_t1_overlay_angle_dir,
+        renders_t2_dir,
+        renders_t2_erode_dir,
+        renders_t2_angle_dir,
+        renders_qmm_dir,
+        renders_qmm_raw_dir,
+        renders_qmm_stitched_dir
+    ]
+
+
+def use_existing_t2vesselview_dir(existing_root):
+    """Use an existing T2VesselView-style folder for render-only input and output."""
+    _set_t2vv_root(existing_root)
+
+
+_set_t2vv_root(os.path.join(base_directory, "T2VesselView"))
 
 def create_directories():
     """Create the directory structure."""
