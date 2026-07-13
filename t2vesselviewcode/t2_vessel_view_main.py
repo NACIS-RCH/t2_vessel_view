@@ -150,17 +150,23 @@ def _build_cli_overlay_specs(panel_preset=None):
 
 
 def _select_qmm_eroded_subset(nifti_paths, main_depth_int):
-    """Select erosion files around main depth: -10, -5, 0, +5, +10, +15."""
+    """Select erosion files around main depth."""
     if not nifti_paths:
         return []
-    target_depths = [
-        int(main_depth_int) - 10,
-        int(main_depth_int) - 5,
-        int(main_depth_int),
-        int(main_depth_int) + 5,
-        int(main_depth_int) + 10,
-        int(main_depth_int) + 15,
-    ]
+    main_depth_int = int(main_depth_int)
+    target_depths = []
+    if main_depth_int >= 20:
+        target_depths.append(main_depth_int - 20)
+    if main_depth_int >= 15:
+        target_depths.append(main_depth_int - 15)
+    target_depths.extend([
+        main_depth_int - 10,
+        main_depth_int - 5,
+        main_depth_int,
+        main_depth_int + 5,
+        main_depth_int + 10,
+        main_depth_int + 15,
+    ])
     target_prefixes = {f"{d:03d}" for d in target_depths if d >= 0}
     selected = []
     for p in sorted(nifti_paths, key=os.path.basename):
