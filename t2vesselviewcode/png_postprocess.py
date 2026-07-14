@@ -34,6 +34,66 @@ from . import dir_structure
 # Lower means stricter (0.0 = exact-match only).
 CONSECUTIVE_DEDUPE_MEAN_ABS_DIFF_THRESHOLD = 0.35
 
+# Map the colour names users pass to the CLI/MRIcroGL to the bundled .clut files.
+# Some MRIcroGL files have numeric prefixes or capital letters, so this keeps the
+# user-facing names simple while still loading the exact shipped lookup table.
+CLUT_NAME_TO_FILE = {
+    # MRIcroGL's first few overlay colours are stored with numeric prefixes.
+    "red": "1red.clut",
+    "1red": "1red.clut",
+    "green": "2green.clut",
+    "2green": "2green.clut",
+    "blue": "3blue.clut",
+    "3blue": "3blue.clut",
+    "hot": "4hot.clut",
+    "4hot": "4hot.clut",
+    "winter": "5winter.clut",
+    "bluegrn": "6bluegrn.clut",
+    "warm": "6warm.clut",
+    "cool": "7cool.clut",
+    "redyell": "8redyell.clut",
+    # Common continuous colour maps used for quantitative overlays.
+    "jet": "jet.clut",
+    "electric_blue": "electric_blue.clut",
+    "blue2red": "blue2red.clut",
+    "viridis": "Viridis.clut",
+    "plasma": "Plasma.clut",
+    "inferno": "Inferno.clut",
+    "magma": "magma.clut",
+    "cividis": "cividis.clut",
+    "turbo": "turbo.clut",
+    "turbo86": "turbo86.clut",
+    "mako": "mako.clut",
+    "rocket": "rocket.clut",
+    "copper": "copper.clut",
+    "copper2": "copper2.clut",
+    "bone": "bone.clut",
+    "bronze": "bronze.clut",
+    "gold": "gold.clut",
+    "hotiron": "HOTIRON.clut",
+    "cubehelix": "cubehelix.clut",
+    "x_rain": "x_rain.clut",
+    # Medical/CT presets are included so legends can match MRIcroGL if users
+    # choose these colour names for an overlay.
+    "nih": "NIH.clut",
+    "actc": "actc.clut",
+    "ge_color": "GE_color.clut",
+    "surface": "surface.clut",
+    "ct_airways": "CT_Airways.clut",
+    "ct_bones": "CT_Bones.clut",
+    "ct_head": "CT_Head.clut",
+    "ct_kidneys": "CT_Kidneys.clut",
+    "ct_liver": "CT_Liver.clut",
+    "ct_muscles": "CT_Muscles.clut",
+    "ct_scalp": "CT_Scalp.clut",
+    "ct_skull": "CT_Skull.clut",
+    "ct_soft": "CT_Soft.clut",
+    "ct_soft_tissue": "CT_Soft_Tissue.clut",
+    "ct_surface": "CT_Surface.clut",
+    "ct_vessels": "CT_Vessels.clut",
+    "ct_w_contrast": "CT_w_Contrast.clut",
+}
+
 
 def _ensure_dir(path: str) -> None:
     """Create directory if missing (no error if it already exists)."""
@@ -220,20 +280,115 @@ def _format_colorbar_value(value) -> str:
     return text if text else "0"
 
 
-def _make_jet_colorbar_image(width: int, height: int) -> PILImage.Image:
-    """Create a vertical matplotlib jet colorbar image, high values at top."""
-    from matplotlib import cm
+def _resolve_bundled_clut_path(color_name: str) -> Optional[str]:
+    """Return the bundled MRIcroGL CLUT path for a requested color name."""
+    # Normalise common typing variations so "electric-blue", "electric blue",
+    # and "electric_blue" all resolve to the same bundled CLUT.
+    normalized = str(color_name or "").strip().lower()
+    normalized = normalized.replace(" ", "_").replace("-", "_")
 
-    # Use matplotlib's built-in 'jet' map as the first supported MVP colormap.
-    cmap = cm.get_cmap("jet")
-    # Make a tiny RGB image that will later be pasted onto the stitched panel.
+    # First try the explicit alias map above; if there is no alias, try the
+    # normalized name directly as "<name>.clut".
+    clut_filename = CLUT_NAME_TO_FILE.get(normalized)
+    if not clut_filename:
+        clut_filename = f"{normalized}.clut"
+
+    # The CLUT files are package data installed beside this Python module.
+    clut_path = os.path.join(os.path.dirname(__file__), "assets", "lut", clut_filename)
+    return clut_path if os.path.exists(clut_path) else None
+
+
+def _parse_mricrogl_clut(clut_path: str) -> List[Tuple[int, Tuple[int, int, int]]]:
+    """Parse MRIcroGL .clut nodes as intensity/RGB pairs."""
+    # MRIcroGL CLUTs store the intensity positions and RGB colours in separate
+    # sections, so collect them by node index and combine them after reading.
+    # For example, nodeintensity2 and nodergba2 describe the same point in the
+    # colour ramp: where it sits and what colour it should be.
+    intensities = {}
+    rgba_values = {}
+    with open(clut_path, "r", encoding="utf-8", errors="ignore") as f:
+        for raw_line in f:
+            line = raw_line.strip()
+            # Ignore section headers, blank lines, and descriptive colour labels.
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            key = key.strip().lower()
+            value = value.strip()
+            if key.startswith("nodeintensity"):
+                try:
+                    # Example: nodeintensity2=128 gives the 0-255 position.
+                    # These values usually come from the [BYT] section.
+                    idx = int(key.replace("nodeintensity", ""))
+                    intensities[idx] = int(float(value))
+                except Exception:
+                    continue
+            elif key.startswith("nodergba"):
+                try:
+                    # Example: nodergba2=127|255|127|64; only RGB is needed.
+                    # These values usually come from the [RGBA255] section.
+                    # The fourth value is alpha/transparency, which is useful for
+                    # MRIcroGL rendering but not for this solid PNG legend.
+                    idx = int(key.replace("nodergba", ""))
+                    parts = [int(float(part)) for part in value.split("|")[:3]]
+                    if len(parts) == 3:
+                        # Clamp values to valid 8-bit RGB in case a CLUT is odd.
+                        rgba_values[idx] = tuple(max(0, min(255, part)) for part in parts)
+                except Exception:
+                    continue
+
+    # Combine matching intensity/RGB nodes, sorted from low to high intensity.
+    nodes = []
+    for idx, intensity in intensities.items():
+        if idx in rgba_values:
+            nodes.append((max(0, min(255, intensity)), rgba_values[idx]))
+    nodes = sorted(nodes, key=lambda item: item[0])
+    if len(nodes) < 2:
+        # A gradient needs at least two points; otherwise interpolation is not possible.
+        raise ValueError(f"CLUT must contain at least two valid nodes: {clut_path}")
+    return nodes
+
+
+def _interpolate_clut_rgb(nodes: List[Tuple[int, Tuple[int, int, int]]], intensity: float) -> Tuple[int, int, int]:
+    """Interpolate RGB from CLUT nodes at a 0-255 intensity position."""
+    # Keep the requested intensity inside the standard MRIcroGL 0-255 CLUT range.
+    pos = max(0.0, min(255.0, float(intensity)))
+    if pos <= nodes[0][0]:
+        return nodes[0][1]
+    if pos >= nodes[-1][0]:
+        return nodes[-1][1]
+
+    # Find the two CLUT nodes surrounding this position and linearly blend RGB.
+    for idx in range(len(nodes) - 1):
+        lo_i, lo_rgb = nodes[idx]
+        hi_i, hi_rgb = nodes[idx + 1]
+        if lo_i <= pos <= hi_i:
+            # frac is 0.0 at the lower node and 1.0 at the upper node.
+            denom = max(1.0, float(hi_i - lo_i))
+            frac = (pos - lo_i) / denom
+            return tuple(
+                int(round(lo_rgb[channel] + frac * (hi_rgb[channel] - lo_rgb[channel])))
+                for channel in range(3)
+            )
+    return nodes[-1][1]
+
+
+def _make_clut_colorbar_image(color_name: str, width: int, height: int) -> Optional[PILImage.Image]:
+    """Create a vertical colorbar from a bundled MRIcroGL .clut file."""
+    # Missing CLUTs are handled by the caller with a clear warning.
+    clut_path = _resolve_bundled_clut_path(color_name)
+    if not clut_path:
+        return None
+
+    # Parse the MRIcroGL colour ramp and draw it into a small Pillow image.
+    nodes = _parse_mricrogl_clut(clut_path)
     bar = PILImage.new("RGB", (width, height))
     denom = max(1, height - 1)
     for y in range(height):
         # Top of the bar should represent the maximum value, bottom the minimum.
-        frac = 1.0 - (y / denom)
-        r, g, b, _ = cmap(frac)
-        rgb = (int(r * 255), int(g * 255), int(b * 255))
+        # Convert this image row into the equivalent 0-255 CLUT intensity.
+        intensity = 255.0 * (1.0 - (y / denom))
+        rgb = _interpolate_clut_rgb(nodes, intensity)
         # Fill this whole row with the same colour to create a vertical gradient.
         for x in range(width):
             bar.putpixel((x, y), rgb)
@@ -249,11 +404,12 @@ def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: 
     MRIcroGL view screenshots.
     """
     color_name = str(overlay_spec.get("color", "")).lower()
-    if color_name != "jet":
-        # Keep first version narrow so the displayed legend matches the rendered overlay.
+    # If the renderer used a colour we did not bundle, skip only the legend rather
+    # than stopping the whole PNG stitching/export step.
+    if not _resolve_bundled_clut_path(color_name):
         print(
             f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
-            f"only 'jet' is currently supported, got '{color_name}'."
+            f"no bundled MRIcroGL CLUT found for '{color_name}'."
         )
         return
 
@@ -307,8 +463,17 @@ def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: 
     bar_x = block_x + value_width + gap
     bar_y = name_y + name_h + name_to_bar_gap
 
-    # Paste the generated jet gradient and draw a thin white border for visibility.
-    colorbar = _make_jet_colorbar_image(bar_width, bar_height)
+    # Paste the generated CLUT gradient and draw a thin white border for visibility.
+    try:
+        colorbar = _make_clut_colorbar_image(color_name, bar_width, bar_height)
+    except Exception as e:
+        print(
+            f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
+            f"could not parse CLUT for '{color_name}': {e}"
+        )
+        return
+    if colorbar is None:
+        return
     img.paste(colorbar, (bar_x, bar_y))
     draw.rectangle(
         [bar_x - 1, bar_y - 1, bar_x + bar_width, bar_y + bar_height],

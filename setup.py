@@ -15,6 +15,7 @@ setup(
         "t2vesselviewcode": [
             "assets/templates/adult/*.nii.gz",
             "assets/templates/pediatric/*.nii.gz",
+            "assets/lut/*.clut",
             "display_scripts/templates/*.py",
         ]
     },
