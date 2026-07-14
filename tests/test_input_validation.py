@@ -8,6 +8,9 @@ import tempfile
 import SimpleITK as sitk
 import numpy as np
 from pathlib import Path
+import pydicom
+from pydicom.dataset import FileDataset, FileMetaDataset
+from pydicom.uid import ExplicitVRLittleEndian, generate_uid
 
 from t2vesselviewcode.input_validation import (
     detect_image_format,
@@ -32,6 +35,29 @@ class TestInputValidation(unittest.TestCase):
         self.test_dicom_path = os.path.join(self.test_dir, "test.dcm")
         test_image = sitk.GetImageFromArray(np.zeros((100, 100)))
         sitk.WriteImage(test_image, self.test_dicom_path)
+
+    def _save_metadata_dicom(self, folder, filename, series_uid, series_description):
+        path = os.path.join(folder, filename)
+        file_meta = FileMetaDataset()
+        file_meta.FileMetaInformationVersion = b'\x00\x01'
+        file_meta.MediaStorageSOPClassUID = pydicom.uid.SecondaryCaptureImageStorage
+        file_meta.MediaStorageSOPInstanceUID = generate_uid()
+        file_meta.TransferSyntaxUID = ExplicitVRLittleEndian
+        file_meta.ImplementationClassUID = generate_uid()
+
+        ds = FileDataset(path, {}, file_meta=file_meta, preamble=b'\0' * 128)
+        ds.is_little_endian = True
+        ds.is_implicit_VR = False
+        ds.SOPClassUID = pydicom.uid.SecondaryCaptureImageStorage
+        ds.SOPInstanceUID = file_meta.MediaStorageSOPInstanceUID
+        ds.SeriesInstanceUID = series_uid
+        ds.SeriesDescription = series_description
+        ds.ProtocolName = series_description
+        ds.PatientID = "TEST"
+        ds.PatientName = "Test^Patient"
+        ds.StudyInstanceUID = generate_uid()
+        pydicom.dcmwrite(path, ds, write_like_original=False)
+        return path
     
     def tearDown(self):
         # Clean up temporary directory
@@ -101,6 +127,30 @@ class TestInputValidation(unittest.TestCase):
         )
         self.assertFalse(is_valid)
         self.assertGreater(len(errors), 0)
+
+    def test_validate_input_files_accepts_single_dicom_series_folder(self):
+        dicom_dir = os.path.join(self.test_dir, "single_series")
+        os.makedirs(dicom_dir, exist_ok=True)
+        series_uid = generate_uid()
+        self._save_metadata_dicom(dicom_dir, "slice001.dcm", series_uid, "T1_MPRAGE")
+        self._save_metadata_dicom(dicom_dir, "slice002.dcm", series_uid, "T1_MPRAGE")
+
+        is_valid, errors = validate_input_files(dicom_dir, self.test_dir)
+
+        self.assertTrue(is_valid)
+        self.assertEqual(errors, [])
+
+    def test_validate_input_files_rejects_mixed_dicom_series_folder(self):
+        dicom_dir = os.path.join(self.test_dir, "mixed_series")
+        os.makedirs(dicom_dir, exist_ok=True)
+        self._save_metadata_dicom(dicom_dir, "slice001.dcm", generate_uid(), "T1_MPRAGE")
+        self._save_metadata_dicom(dicom_dir, "slice002.dcm", generate_uid(), "T2_FLAIR")
+
+        is_valid, errors = validate_input_files(dicom_dir, self.test_dir)
+
+        self.assertFalse(is_valid)
+        self.assertTrue(any("multiple DICOM series" in error for error in errors))
+        self.assertTrue(any("Please specify the exact DICOM series folder" in error for error in errors))
     
     def test_create_output_directories(self):
         # Test directory creation
