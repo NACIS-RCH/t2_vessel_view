@@ -41,6 +41,14 @@ class TestInputValidation(unittest.TestCase):
     def test_detect_image_format(self):
         # Test NIfTI detection
         self.assertEqual(detect_image_format(self.test_nifti_path), 'nifti')
+
+        # Test DICOM folder detection
+        dicom_dir = os.path.join(self.test_dir, "dicom_series")
+        os.makedirs(dicom_dir, exist_ok=True)
+        dicom_in_dir_path = os.path.join(dicom_dir, "slice001.dcm")
+        test_image = sitk.GetImageFromArray(np.zeros((100, 100)))
+        sitk.WriteImage(test_image, dicom_in_dir_path)
+        self.assertEqual(detect_image_format(dicom_dir), 'dicom')
         
         # Test invalid file
         with self.assertRaises(ValueError):
