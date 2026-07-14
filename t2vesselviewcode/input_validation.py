@@ -44,18 +44,22 @@ def detect_image_format(file_path: str) -> str:
     Raises:
         ValueError: If the file format cannot be determined (not DICOM or NIfTI)
     """
-    try:
-        # First try to read the file as a DICOM image
-        pydicom.dcmread(file_path)
-        return 'dicom'
-    except (pydicom.errors.InvalidDicomError, IOError):
+    # DICOM folders need special handling because pydicom.dcmread reads one file,
+    # not a directory. Inspect candidate files and stop as soon as one is valid.
+    for candidate_path in _dicom_candidate_paths(file_path):
         try:
-            # If DICOM reading fails, try to read as NIfTI
-            nib.load(file_path)
-            return 'nifti'
-        except (nib.loadsave.ImageFileError, IOError):
-            # If both attempts fail, the file is neither DICOM nor NIfTI
-            raise ValueError(f"Could not determine format of {file_path}")
+            pydicom.dcmread(candidate_path, stop_before_pixels=True)
+            return 'dicom'
+        except (pydicom.errors.InvalidDicomError, IOError, IsADirectoryError):
+            continue
+    
+    try:
+        # If DICOM reading fails, try to read the original path as NIfTI.
+        nib.load(file_path)
+        return 'nifti'
+    except (nib.loadsave.ImageFileError, IOError):
+        # If both attempts fail, the path is neither DICOM nor NIfTI.
+        raise ValueError(f"Could not determine format of {file_path}")
 
 
 def _dicom_candidate_paths(input_path: str) -> List[str]:
