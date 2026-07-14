@@ -73,6 +73,83 @@ def _dicom_candidate_paths(input_path: str) -> List[str]:
     return [input_path]
 
 
+def _read_dicom_series_identity(file_path: str) -> Optional[Dict[str, str]]:
+    """Read DICOM series identity metadata from one file."""
+    try:
+        # Read only the header metadata; pixel data is not needed for validation.
+        ds = pydicom.dcmread(file_path, stop_before_pixels=True)
+    except Exception:
+        # Non-DICOM files can exist in exported folders, so skip unreadable files.
+        return None
+
+    # SeriesInstanceUID is the strict DICOM identifier for one acquisition series.
+    series_uid = str(getattr(ds, "SeriesInstanceUID", "") or "UNKNOWN_SERIES_UID")
+    # Description/protocol are used only to make error messages readable.
+    series_description = str(getattr(ds, "SeriesDescription", "") or "")
+    protocol_name = str(getattr(ds, "ProtocolName", "") or "")
+    # Prefer the scanner series description, then protocol name, then a fallback.
+    label = series_description or protocol_name or "Unnamed series"
+    return {
+        "series_uid": series_uid,
+        "series_description": series_description,
+        "protocol_name": protocol_name,
+        "label": label,
+    }
+
+
+def _short_uid(uid: str) -> str:
+    """Return a readable suffix for long DICOM UIDs."""
+    # Short UIDs are already readable enough to show in full.
+    if len(uid) <= 12:
+        return uid
+    # Long DICOM UIDs are hard to scan, so show the final characters with ellipsis.
+    return "..." + uid[-12:]
+
+
+def validate_dicom_folder_single_series(input_path: str, modality_label: str = "Input") -> Tuple[bool, str]:
+    """Validate that a DICOM folder contains exactly one SeriesInstanceUID."""
+    # A single DICOM file is already an exact input, so no folder-level check is needed.
+    if not os.path.isdir(input_path):
+        return True, "DICOM file input"
+
+    # Store one readable metadata example for each SeriesInstanceUID found.
+    series_by_uid = {}
+    # Walk all files in the folder, including nested subfolders from scanner exports.
+    for candidate_path in _dicom_candidate_paths(input_path):
+        identity = _read_dicom_series_identity(candidate_path)
+        # Skip non-DICOM/read-failed files; many exports include sidecar files.
+        if identity is None:
+            continue
+        # Group by SeriesInstanceUID, the strict DICOM identifier for one series.
+        uid = identity["series_uid"]
+        if uid not in series_by_uid:
+            series_by_uid[uid] = identity
+
+    # If nothing readable was found, this folder is not usable as a DICOM input.
+    if not series_by_uid:
+        return False, f"{modality_label} DICOM folder contains no readable DICOM files: {input_path}"
+
+    # Exactly one UID means the folder appears to contain one acquisition series.
+    if len(series_by_uid) == 1:
+        identity = next(iter(series_by_uid.values()))
+        return True, f"Single DICOM series detected: {identity['label']} ({identity['series_uid']})"
+
+    # Multiple UIDs means the folder is ambiguous, usually a study-level folder.
+    series_labels = []
+    for identity in series_by_uid.values():
+        # Include a readable label plus shortened UID so users can identify the series.
+        series_labels.append(
+            f"{identity['label']} (SeriesInstanceUID {_short_uid(identity['series_uid'])})"
+        )
+    # Fail early with guidance to point each CLI input at one exact series.
+    return (
+        False,
+        f"{modality_label} DICOM folder contains multiple DICOM series: "
+        f"{', '.join(series_labels)}. Please specify the exact DICOM series folder "
+        "or a single DICOM file path for this input."
+    )
+
+
 def extract_dicom_metadata(input_path: str) -> Dict[str, str]:
     """Return PatientID, PatientName, StudyDate, and StudyTime from a DICOM file or folder."""
     for path in _dicom_candidate_paths(input_path):
@@ -194,6 +271,10 @@ def validate_input_files(
             # Try to detect the format of the T1 image
             t1_format = detect_image_format(t1_path)
             logger.info(f"T1 image format: {t1_format}")
+            if t1_format == 'dicom':
+                series_ok, series_message = validate_dicom_folder_single_series(t1_path, "T1")
+                if not series_ok:
+                    errors.append(series_message)
         except ValueError as e:
             errors.append(str(e))
     
@@ -207,6 +288,13 @@ def validate_input_files(
                     # Try to detect the format of each optional image
                     img_format = detect_image_format(path)
                     logger.info(f"{modality.upper()} image format: {img_format}")
+                    if img_format == 'dicom':
+                        series_ok, series_message = validate_dicom_folder_single_series(
+                            path,
+                            modality.upper()
+                        )
+                        if not series_ok:
+                            errors.append(series_message)
                 except ValueError as e:
                     errors.append(str(e))
     
