@@ -95,15 +95,34 @@ def run_dependency_preflight():
     print("Dependency preflight checks passed.")
     return True
 
+OVERLAY_CLI_COUNT = 4
+
+
+def _iter_overlay_cli_indices():
+    """Yield supported numbered overlay indices."""
+    return range(1, OVERLAY_CLI_COUNT + 1)
+
+
+def _has_any_cli_overlay():
+    """Return True when any numbered overlay path was provided."""
+    return any(getattr(commandline.args, f"overlay{idx}_path", None) for idx in _iter_overlay_cli_indices())
+
+
 def _build_cli_overlay_specs(panel_preset=None):
-    """Build up to two MRIcroGL overlay specs from CLI arguments.
+    """Build MRIcroGL overlay specs from numbered CLI arguments.
 
     Overlays are loaded directly in MRIcroGL (not preprocessed/masked by this pipeline).
     If window min/max are omitted, robust defaults are estimated from the overlay image.
     """
     overlays = []
     overlay_names = []
-    for idx in (1, 2):
+    default_colors = {
+        1: "jet",
+        2: "red",
+        3: "hot",
+        4: "blue",
+    }
+    for idx in _iter_overlay_cli_indices():
         path_val = getattr(commandline.args, f"overlay{idx}_path", None)
         if not path_val:
             continue
@@ -112,7 +131,7 @@ def _build_cli_overlay_specs(panel_preset=None):
             raise FileNotFoundError(f"Overlay {idx} not found: {path_val}")
 
         # Preset-specific defaults (only when value was not provided on CLI)
-        default_color = "jet" if idx == 1 else "red"
+        default_color = default_colors.get(idx, "jet")
         default_opacity = 35
         if panel_preset == "quant_map_mm_panel" and idx == 2:
             default_color = "electric_blue"
@@ -143,6 +162,7 @@ def _build_cli_overlay_specs(panel_preset=None):
 
         overlays.append({
             "path": os.path.abspath(path_val),
+            "name": str(name_val),
             "color": str(color_val),
             "min": float(min_val),
             "max": float(max_val),
@@ -211,7 +231,7 @@ def _validate_render_existing_inputs(panel_preset):
             "Expected files under Eroded_nifti/T1, FLAIR, or T2_* subfolders."
         )
 
-    has_overlay = bool(getattr(commandline.args, "overlay1_path", None) or getattr(commandline.args, "overlay2_path", None))
+    has_overlay = _has_any_cli_overlay()
     if has_overlay and not eroded_sets["T1"]:
         raise ValueError("Render-only T1 overlay output requires existing T1 eroded files.")
 
@@ -287,8 +307,8 @@ def _run_render_outputs(panel_preset):
 
         if overlay_specs:
             try:
-                t1_overview_overlay_specs = overlay_specs[:1] if panel_preset == "quant_map_mm_panel" else overlay_specs
-                t1_overview_overlay_names = overlay_names[:1] if panel_preset == "quant_map_mm_panel" else overlay_names
+                t1_overview_overlay_specs = overlay_specs
+                t1_overview_overlay_names = overlay_names
                 export_overlay_dicom = bool(getattr(commandline.args, "export_overlay_dicom", False))
                 dicom_metadata = {}
                 if export_overlay_dicom:
@@ -299,14 +319,7 @@ def _run_render_outputs(panel_preset):
                     if dicom_patient_id_override:
                         dicom_metadata["patient_id"] = dicom_patient_id_override
                 overlay_label = " + ".join(t1_overview_overlay_names)
-                overlay_colorbar_spec = None
-                if t1_overview_overlay_specs:
-                    overlay_colorbar_spec = {
-                        "name": t1_overview_overlay_names[0],
-                        "color": t1_overview_overlay_specs[0].get("color"),
-                        "min": t1_overview_overlay_specs[0].get("min"),
-                        "max": t1_overview_overlay_specs[0].get("max"),
-                    }
+                overlay_colorbar_spec = t1_overview_overlay_specs
                 overlay_angles = [[90, 0, 'left'], [270, 0, 'right'], [180, 0, 'anterior'], [0, 0, 'posterior'], [0, 90, 'superior'], [180, -90, 'inferior'],
                                   [270, 180, 'surg_left_lat'], [90, 180, 'surg_right_lat'], [300, 175, 'surg_left_ato'], [60, 175, 'surg_right_ato']]
                 overlay_batches = list(_iter_chunks(t1_eroded_files, 5))
@@ -574,7 +587,9 @@ def main():
             'user_mask': commandline.args.user_mask,
             'user_mask_structural': commandline.args.user_mask_structural,
             'overlay1': getattr(commandline.args, 'overlay1_path', None),
-            'overlay2': getattr(commandline.args, 'overlay2_path', None)
+            'overlay2': getattr(commandline.args, 'overlay2_path', None),
+            'overlay3': getattr(commandline.args, 'overlay3_path', None),
+            'overlay4': getattr(commandline.args, 'overlay4_path', None)
         }
     )
 
@@ -866,11 +881,10 @@ def main():
         # Optional T1 + overlay rendering (only if at least one overlay was provided)
         if overlay_specs:
             try:
-                # Niche behavior for quant_map_mm_panel:
-                # for T1_overlay_overview use first overlay only.
-                # Default behavior remains unchanged.
-                t1_overview_overlay_specs = overlay_specs[:1] if panel_preset == "quant_map_mm_panel" else overlay_specs
-                t1_overview_overlay_names = overlay_names[:1] if panel_preset == "quant_map_mm_panel" else overlay_names
+                # T1 overlay overview keeps all active overlays. In quant_map_mm_panel,
+                # the T2/FLAIR-specific panels below still use overlay1 only.
+                t1_overview_overlay_specs = overlay_specs
+                t1_overview_overlay_names = overlay_names
                 export_overlay_dicom = bool(getattr(commandline.args, "export_overlay_dicom", False))
                 dicom_metadata = {}
                 if export_overlay_dicom:
@@ -881,14 +895,7 @@ def main():
                     if dicom_patient_id_override:
                         dicom_metadata["patient_id"] = dicom_patient_id_override
                 overlay_label = " + ".join(t1_overview_overlay_names)
-                overlay_colorbar_spec = None
-                if t1_overview_overlay_specs:
-                    overlay_colorbar_spec = {
-                        "name": t1_overview_overlay_names[0],
-                        "color": t1_overview_overlay_specs[0].get("color"),
-                        "min": t1_overview_overlay_specs[0].get("min"),
-                        "max": t1_overview_overlay_specs[0].get("max"),
-                    }
+                overlay_colorbar_spec = t1_overview_overlay_specs
                 overlay_angles = [[90,0,'left'],[270,0,'right'],[180,0,'anterior'],[0,0,'posterior'],[0,90,'superior'],[180,-90,'inferior'],
                                   [270,180,'surg_left_lat'],[90,180,'surg_right_lat'],[300,175,'surg_left_ato'],[60,175,'surg_right_ato']]
                 overlay_render_batch_size = 5
@@ -1069,7 +1076,7 @@ def main():
             if not flair_eroded_files:
                 raise ValueError("quant_map_mm_panel requires FLAIR inputs and eroded FLAIR outputs.")
             # Preset-specific overlay behavior:
-            # - T1 panels keep both overlays in CLI order.
+            # - T1 panels keep all active overlays in CLI order.
             # - Non-T1 panels (FLAIR/T2) use only the first overlay.
             qmm_t1_overlays = overlay_specs
             qmm_non_t1_overlays = overlay_specs[:1]

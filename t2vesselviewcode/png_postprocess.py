@@ -395,22 +395,35 @@ def _make_clut_colorbar_image(color_name: str, width: int, height: int) -> Optio
     return bar
 
 
-def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: Dict) -> None:
-    """Add a compact overlay colorbar legend to the top-right of a stitched PNG.
+def _normalize_overlay_colorbar_specs(overlay_specs) -> List[Dict]:
+    """Return overlay colorbar specs as a clean list of dictionaries."""
+    if not overlay_specs:
+        return []
+    if isinstance(overlay_specs, dict):
+        overlay_specs = [overlay_specs]
+    return [spec for spec in overlay_specs if isinstance(spec, dict)]
 
-    overlay_spec is a small dictionary from the overlay CLI values, for example:
+
+def _measure_text(draw: ImageDraw.Draw, text: str, font) -> Tuple[int, int]:
+    """Measure text dimensions with Pillow version fallbacks."""
+    try:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0], bbox[3] - bbox[1]
+    except Exception:
+        return draw.textsize(text, font=font)
+
+
+def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs) -> None:
+    """Add compact stacked overlay colorbar legends to a stitched PNG.
+
+    overlay_specs can be one dictionary or a list of dictionaries from the overlay
+    CLI values, for example:
     {"name": "PET", "color": "jet", "min": 2000, "max": 23000}.
     This function edits one final stitched panel image, not the individual
     MRIcroGL view screenshots.
     """
-    color_name = str(overlay_spec.get("color", "")).lower()
-    # If the renderer used a colour we did not bundle, skip only the legend rather
-    # than stopping the whole PNG stitching/export step.
-    if not _resolve_bundled_clut_path(color_name):
-        print(
-            f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
-            f"no bundled MRIcroGL CLUT found for '{color_name}'."
-        )
+    overlay_specs = _normalize_overlay_colorbar_specs(overlay_specs)
+    if not overlay_specs:
         return
 
     # Open the stitched panel as RGB so drawing and pasted colours are predictable.
@@ -418,88 +431,111 @@ def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: 
     draw = ImageDraw.Draw(img)
     w, h = img.size
 
-    # Scale text with image height so it stays readable across output sizes.
-    font_size = max(12, int(h * 0.018))
-    value_font_size = max(11, int(h * 0.016))
+    # Use a slightly smaller legend when several overlays are present.
+    multiple_overlays = len(overlay_specs) > 1
+    font_size = max(10, int(h * (0.014 if multiple_overlays else 0.018)))
+    value_font_size = max(9, int(h * (0.012 if multiple_overlays else 0.016)))
     name_font = _load_annotation_font(font_size)
     value_font = _load_annotation_font(value_font_size)
 
-    # Text shown in the legend: overlay name above, max/min beside the bar.
-    overlay_name = str(overlay_spec.get("name", "Overlay"))
-    min_text = _format_colorbar_value(overlay_spec.get("min", ""))
-    max_text = _format_colorbar_value(overlay_spec.get("max", ""))
-
-    # Size the whole legend relative to the panel; top-right usually has black background.
     margin = max(12, int(min(w, h) * 0.02))
     gap = max(4, int(min(w, h) * 0.008))
+    entry_gap = max(8, int(min(w, h) * 0.012))
     name_to_bar_gap = gap + 3
     bar_width = max(6, int(w * 0.006))
-    bar_height = max(35, int(h * 0.08))
+    bar_height = max(28, int(h * (0.055 if multiple_overlays else 0.08)))
 
-    try:
-        # Measure text so the label block and colour bar can be aligned neatly.
-        name_bbox = draw.textbbox((0, 0), overlay_name, font=name_font)
-        max_bbox = draw.textbbox((0, 0), max_text, font=value_font)
-        min_bbox = draw.textbbox((0, 0), min_text, font=value_font)
-        name_w = name_bbox[2] - name_bbox[0]
-        name_h = name_bbox[3] - name_bbox[1]
-        max_w = max_bbox[2] - max_bbox[0]
-        max_h = max_bbox[3] - max_bbox[1]
-        min_w = min_bbox[2] - min_bbox[0]
-        min_h = min_bbox[3] - min_bbox[1]
-    except Exception:
-        # Older Pillow versions may not have textbbox, so fall back to textsize.
-        name_w, name_h = draw.textsize(overlay_name, font=name_font)
-        max_w, max_h = draw.textsize(max_text, font=value_font)
-        min_w, min_h = draw.textsize(min_text, font=value_font)
+    entries = []
+    global_value_width = 0
+    global_block_width = 0
+    for overlay_idx, overlay_spec in enumerate(overlay_specs, start=1):
+        color_name = str(overlay_spec.get("color", "")).lower()
+        overlay_name = str(overlay_spec.get("name", f"Overlay{overlay_idx}"))
+        min_text = _format_colorbar_value(overlay_spec.get("min", ""))
+        max_text = _format_colorbar_value(overlay_spec.get("max", ""))
 
-    # Build a small top-right layout:
-    # overlay name centered above; min/max labels on the left; colour bar on the right.
-    value_width = max(max_w, min_w)
-    block_width = max(name_w, value_width + gap + bar_width)
-    block_x = max(margin, w - margin - block_width)
-    name_x = block_x + max(0, (block_width - name_w) // 2)
-    name_y = margin
-    bar_x = block_x + value_width + gap
-    bar_y = name_y + name_h + name_to_bar_gap
+        # If the renderer used a colour we did not bundle, skip only that legend.
+        if not _resolve_bundled_clut_path(color_name):
+            print(
+                f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
+                f"no bundled MRIcroGL CLUT found for '{color_name}'."
+            )
+            continue
 
-    # Paste the generated CLUT gradient and draw a thin white border for visibility.
-    try:
-        colorbar = _make_clut_colorbar_image(color_name, bar_width, bar_height)
-    except Exception as e:
-        print(
-            f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
-            f"could not parse CLUT for '{color_name}': {e}"
+        try:
+            colorbar = _make_clut_colorbar_image(color_name, bar_width, bar_height)
+        except Exception as e:
+            print(
+                f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
+                f"could not parse CLUT for '{color_name}': {e}"
+            )
+            continue
+        if colorbar is None:
+            continue
+
+        # Measure text so each stacked legend entry can align consistently.
+        name_w, name_h = _measure_text(draw, overlay_name, name_font)
+        max_w, max_h = _measure_text(draw, max_text, value_font)
+        min_w, min_h = _measure_text(draw, min_text, value_font)
+        value_width = max(max_w, min_w)
+        entry_width = max(name_w, value_width + gap + bar_width)
+        global_value_width = max(global_value_width, value_width)
+        global_block_width = max(global_block_width, entry_width)
+        entries.append({
+            "colorbar": colorbar,
+            "name": overlay_name,
+            "min": min_text,
+            "max": max_text,
+            "name_w": name_w,
+            "name_h": name_h,
+            "max_h": max_h,
+            "min_h": min_h,
+        })
+
+    if not entries:
+        return
+
+    block_x = max(margin, w - margin - global_block_width)
+    current_y = margin
+    for entry_idx, entry in enumerate(entries):
+        name_x = block_x + max(0, (global_block_width - entry["name_w"]) // 2)
+        name_y = current_y
+        bar_x = block_x + global_value_width + gap
+        bar_y = name_y + entry["name_h"] + name_to_bar_gap
+
+        img.paste(entry["colorbar"], (bar_x, bar_y))
+        draw.rectangle(
+            [bar_x - 1, bar_y - 1, bar_x + bar_width, bar_y + bar_height],
+            outline=(255, 255, 255),
+            width=1
         )
-        return
-    if colorbar is None:
-        return
-    img.paste(colorbar, (bar_x, bar_y))
-    draw.rectangle(
-        [bar_x - 1, bar_y - 1, bar_x + bar_width, bar_y + bar_height],
-        outline=(255, 255, 255),
-        width=1
-    )
 
-    # Draw all text with a black outline so it remains readable over image content.
-    _draw_text_with_outline(draw, (name_x, name_y), overlay_name, font=name_font)
-    _draw_text_with_outline(draw, (block_x, bar_y - max_h // 2), max_text, font=value_font)
-    _draw_text_with_outline(
-        draw,
-        (block_x, bar_y + bar_height - min_h // 2),
-        min_text,
-        font=value_font
-    )
+        # Draw all text with a black outline so it remains readable over image content.
+        _draw_text_with_outline(draw, (name_x, name_y), entry["name"], font=name_font)
+        _draw_text_with_outline(draw, (block_x, bar_y - entry["max_h"] // 2), entry["max"], font=value_font)
+        _draw_text_with_outline(
+            draw,
+            (block_x, bar_y + bar_height - entry["min_h"] // 2),
+            entry["min"],
+            font=value_font
+        )
+        current_y = bar_y + bar_height + (entry_gap if entry_idx < len(entries) - 1 else 0)
+
     img.save(path_out)
 
 
-def annotate_overlay_colorbar_series(folder: str, overlay_spec: Optional[Dict]) -> None:
-    """Annotate each stitched concat PNG in a folder with an overlay colorbar."""
+def annotate_overlay_colorbar_on_png(path_in: str, path_out: str, overlay_spec: Dict) -> None:
+    """Add one overlay colorbar legend to a stitched PNG."""
+    annotate_overlay_colorbars_on_png(path_in, path_out, overlay_spec)
+
+
+def annotate_overlay_colorbar_series(folder: str, overlay_spec) -> None:
+    """Annotate each stitched concat PNG in a folder with overlay colorbars."""
     if not overlay_spec:
         return
     # These concat_*.png files are the final stitched panels that become PPTX slides.
     for path in sorted(glob.glob(os.path.join(folder, 'concat_*.png'))):
-        annotate_overlay_colorbar_on_png(path, path, overlay_spec)
+        annotate_overlay_colorbars_on_png(path, path, overlay_spec)
 
 
 def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: str) -> None:
@@ -1389,8 +1425,8 @@ def run_preset_quant_map_mm_panel(
     """
     angles = qmm_angles or ['left', 'right', 'anterior', 'posterior', 'superior', 'inferior']
     overlay1_name = (overlay_names[0] if overlay_names and len(overlay_names) >= 1 else "Overlay1")
-    overlay2_name = (overlay_names[1] if overlay_names and len(overlay_names) >= 2 else "Overlay2")
-    t1_overlay_label = f"T1 + {overlay1_name} + {overlay2_name}"
+    t1_overlay_names = overlay_names if overlay_names else [overlay1_name]
+    t1_overlay_label = "T1 + " + " + ".join(t1_overlay_names)
     t2_overlay_label = f"T2 (inv) + {overlay1_name}"
     flair_overlay_label = f"FLAIR + {overlay1_name}"
     stitched_root = os.path.join(dir_structure.renders_qmm_stitched_dir, 'by_angle')

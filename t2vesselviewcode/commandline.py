@@ -192,6 +192,92 @@ parser.add_argument('--overlay2-opacity',
             help='Opacity for second overlay layer (0-100). If omitted, defaults to 35 (or 100 for quant_map_mm_panel preset).',
             dest='overlay2_opacity')
 
+parser.add_argument('--overlay3-path',
+            metavar='overlay3_path',
+            type=str,
+            action='store',
+            help='Optional path to third overlay image registered to T1.',
+            dest='overlay3_path')
+
+parser.add_argument('--overlay3-color',
+            metavar='overlay3_color',
+            type=str,
+            action='store',
+            help='MRIcroGL colorname for third overlay. If omitted, defaults to hot.',
+            dest='overlay3_color')
+
+parser.add_argument('--overlay3-name',
+            metavar='overlay3_name',
+            type=str,
+            action='store',
+            help='Optional short label for third overlay used in stitched PNG text. Use no spaces.',
+            default='Overlay3',
+            dest='overlay3_name')
+
+parser.add_argument('--overlay3-min',
+            metavar='overlay3_min',
+            type=float,
+            action='store',
+            help='Optional minimum window value for third overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay3_min')
+
+parser.add_argument('--overlay3-max',
+            metavar='overlay3_max',
+            type=float,
+            action='store',
+            help='Optional maximum window value for third overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay3_max')
+
+parser.add_argument('--overlay3-opacity',
+            metavar='overlay3_opacity',
+            type=int,
+            action='store',
+            help='Opacity for third overlay layer (0-100). If omitted, defaults to 35.',
+            dest='overlay3_opacity')
+
+parser.add_argument('--overlay4-path',
+            metavar='overlay4_path',
+            type=str,
+            action='store',
+            help='Optional path to fourth overlay image registered to T1.',
+            dest='overlay4_path')
+
+parser.add_argument('--overlay4-color',
+            metavar='overlay4_color',
+            type=str,
+            action='store',
+            help='MRIcroGL colorname for fourth overlay. If omitted, defaults to blue.',
+            dest='overlay4_color')
+
+parser.add_argument('--overlay4-name',
+            metavar='overlay4_name',
+            type=str,
+            action='store',
+            help='Optional short label for fourth overlay used in stitched PNG text. Use no spaces.',
+            default='Overlay4',
+            dest='overlay4_name')
+
+parser.add_argument('--overlay4-min',
+            metavar='overlay4_min',
+            type=float,
+            action='store',
+            help='Optional minimum window value for fourth overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay4_min')
+
+parser.add_argument('--overlay4-max',
+            metavar='overlay4_max',
+            type=float,
+            action='store',
+            help='Optional maximum window value for fourth overlay. Strongly recommended to set explicitly for clinical use.',
+            dest='overlay4_max')
+
+parser.add_argument('--overlay4-opacity',
+            metavar='overlay4_opacity',
+            type=int,
+            action='store',
+            help='Opacity for fourth overlay layer (0-100). If omitted, defaults to 35.',
+            dest='overlay4_opacity')
+
 parser.add_argument('--panel-preset',
             metavar='panel_preset',
             type=str,
@@ -258,7 +344,7 @@ if args.user_mask and not args.user_mask_structural:
     parser.error('-m/--user_mask requires -n/--user_mask_structural.')
 
 # Basic CLI validation for overlay parameters
-for overlay_idx in (1, 2):
+for overlay_idx in range(1, 5):
     path_val = getattr(args, f'overlay{overlay_idx}_path', None)
     name_val = getattr(args, f'overlay{overlay_idx}_name', f'Overlay{overlay_idx}')
     min_val = getattr(args, f'overlay{overlay_idx}_min', None)
@@ -303,8 +389,8 @@ if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
         # Preserve user order while removing accidental duplicates.
         args.qmm_angles = list(dict.fromkeys(args.qmm_angles))
 
-if args.export_overlay_dicom and not (args.overlay1_path or args.overlay2_path):
-    parser.error('--export-overlay-dicom requires --overlay1-path or --overlay2-path.')
+if args.export_overlay_dicom and not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
+    parser.error('--export-overlay-dicom requires at least one overlay path (--overlay1-path through --overlay4-path).')
 
 if args.export_overlay_dicom:
     if not args.dicom_metadata_source:
