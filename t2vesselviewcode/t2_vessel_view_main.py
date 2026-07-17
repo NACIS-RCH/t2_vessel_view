@@ -26,6 +26,7 @@ from . import utils
 from . import masking
 from . import volume_rendering
 from . import png_postprocess
+from . import overlay_colors
 
 
 def run_dependency_preflight():
@@ -139,6 +140,12 @@ def _build_cli_overlay_specs(panel_preset=None):
 
         raw_color = getattr(commandline.args, f"overlay{idx}_color", None)
         color_val = raw_color if raw_color else default_color
+        # Resolve aliases once so MRIcroGL and colorbars share the same name
+        # (e.g. green and 2green both become canonical 2green).
+        color_val, _recognized = overlay_colors.resolve_or_warn(
+            color_val,
+            overlay_label=f"overlay{idx}"
+        )
         name_val = getattr(commandline.args, f"overlay{idx}_name", f"Overlay{idx}")
         min_val = getattr(commandline.args, f"overlay{idx}_min", None)
         max_val = getattr(commandline.args, f"overlay{idx}_max", None)
