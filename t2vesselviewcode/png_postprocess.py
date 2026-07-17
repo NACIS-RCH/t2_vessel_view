@@ -28,71 +28,22 @@ from pptx import Presentation
 from pptx.util import Inches
 
 from . import dir_structure
+from . import overlay_colors
 
 # Hard-coded tolerance for consecutive stitched PNG dedupe.
 # Unit is mean absolute RGB difference per channel on [0, 255].
 # Lower means stricter (0.0 = exact-match only).
 CONSECUTIVE_DEDUPE_MEAN_ABS_DIFF_THRESHOLD = 0.35
 
-# Map the colour names users pass to the CLI/MRIcroGL to the bundled .clut files.
-# Some MRIcroGL files have numeric prefixes or capital letters, so this keeps the
-# user-facing names simple while still loading the exact shipped lookup table.
+# Backwards-compatible alias kept for any external imports; prefer overlay_colors.
 CLUT_NAME_TO_FILE = {
-    # MRIcroGL's first few overlay colours are stored with numeric prefixes.
-    "red": "1red.clut",
-    "1red": "1red.clut",
-    "green": "2green.clut",
-    "2green": "2green.clut",
-    "blue": "3blue.clut",
-    "3blue": "3blue.clut",
-    "hot": "4hot.clut",
-    "4hot": "4hot.clut",
-    "winter": "5winter.clut",
-    "bluegrn": "6bluegrn.clut",
-    "warm": "6warm.clut",
-    "cool": "7cool.clut",
-    "redyell": "8redyell.clut",
-    # Common continuous colour maps used for quantitative overlays.
-    "jet": "jet.clut",
-    "electric_blue": "electric_blue.clut",
-    "blue2red": "blue2red.clut",
-    "viridis": "Viridis.clut",
-    "plasma": "Plasma.clut",
-    "inferno": "Inferno.clut",
-    "magma": "magma.clut",
-    "cividis": "cividis.clut",
-    "turbo": "turbo.clut",
-    "turbo86": "turbo86.clut",
-    "mako": "mako.clut",
-    "rocket": "rocket.clut",
-    "copper": "copper.clut",
-    "copper2": "copper2.clut",
-    "bone": "bone.clut",
-    "bronze": "bronze.clut",
-    "gold": "gold.clut",
-    "hotiron": "HOTIRON.clut",
-    "cubehelix": "cubehelix.clut",
-    "x_rain": "x_rain.clut",
-    # Medical/CT presets are included so legends can match MRIcroGL if users
-    # choose these colour names for an overlay.
-    "nih": "NIH.clut",
-    "actc": "actc.clut",
-    "ge_color": "GE_color.clut",
-    "surface": "surface.clut",
-    "ct_airways": "CT_Airways.clut",
-    "ct_bones": "CT_Bones.clut",
-    "ct_head": "CT_Head.clut",
-    "ct_kidneys": "CT_Kidneys.clut",
-    "ct_liver": "CT_Liver.clut",
-    "ct_muscles": "CT_Muscles.clut",
-    "ct_scalp": "CT_Scalp.clut",
-    "ct_skull": "CT_Skull.clut",
-    "ct_soft": "CT_Soft.clut",
-    "ct_soft_tissue": "CT_Soft_Tissue.clut",
-    "ct_surface": "CT_Surface.clut",
-    "ct_vessels": "CT_Vessels.clut",
-    "ct_w_contrast": "CT_w_Contrast.clut",
+    key: filename
+    for key, filename in overlay_colors.CANONICAL_CLUT_FILES.items()
 }
+CLUT_NAME_TO_FILE.update({
+    alias: overlay_colors.CANONICAL_CLUT_FILES[canonical]
+    for alias, canonical in overlay_colors.UNPREFIXED_ALIASES.items()
+})
 
 
 def _ensure_dir(path: str) -> None:
@@ -288,20 +239,9 @@ def _format_colorbar_value(value) -> str:
 
 def _resolve_bundled_clut_path(color_name: str) -> Optional[str]:
     """Return the bundled MRIcroGL CLUT path for a requested color name."""
-    # Normalise common typing variations so "electric-blue", "electric blue",
-    # and "electric_blue" all resolve to the same bundled CLUT.
-    normalized = str(color_name or "").strip().lower()
-    normalized = normalized.replace(" ", "_").replace("-", "_")
-
-    # First try the explicit alias map above; if there is no alias, try the
-    # normalized name directly as "<name>.clut".
-    clut_filename = CLUT_NAME_TO_FILE.get(normalized)
-    if not clut_filename:
-        clut_filename = f"{normalized}.clut"
-
-    # The CLUT files are package data installed beside this Python module.
-    clut_path = os.path.join(os.path.dirname(__file__), "assets", "lut", clut_filename)
-    return clut_path if os.path.exists(clut_path) else None
+    # Shared resolver so colorbars use the same aliases as MRIcroGL overlays
+    # (e.g. green and 2green both map to 2green.clut).
+    return overlay_colors.resolve_clut_path(color_name)
 
 
 def _parse_mricrogl_clut(clut_path: str) -> List[Tuple[int, Tuple[int, int, int]]]:

@@ -117,7 +117,12 @@ parser.add_argument('--overlay1-color',
             metavar='overlay1_color',
             type=str,
             action='store',
-            help='MRIcroGL colorname for first overlay (for example: jet, red, blue, hot).',
+            help=(
+                'Colour map for first overlay (used for both MRIcroGL and colorbar). '
+                'Accepts exact CLUT names (e.g. 2green, 1red, jet, electric_blue, viridis) '
+                'or unprefixed aliases for numbered maps (e.g. green, red, blue, hot). '
+                'Default: jet.'
+            ),
             dest='overlay1_color')
 
 parser.add_argument('--overlay1-name',
@@ -160,7 +165,10 @@ parser.add_argument('--overlay2-color',
             metavar='overlay2_color',
             type=str,
             action='store',
-            help='MRIcroGL colorname for second overlay. If omitted, defaults to red (or electric_blue for quant_map_mm_panel preset).',
+            help=(
+                'Colour map for second overlay (MRIcroGL + colorbar). Same accepted names as '
+                '--overlay1-color. Default: red/1red (or electric_blue for quant_map_mm_panel).'
+            ),
             dest='overlay2_color')
 
 parser.add_argument('--overlay2-name',
@@ -203,7 +211,10 @@ parser.add_argument('--overlay3-color',
             metavar='overlay3_color',
             type=str,
             action='store',
-            help='MRIcroGL colorname for third overlay. If omitted, defaults to hot.',
+            help=(
+                'Colour map for third overlay (MRIcroGL + colorbar). Same accepted names as '
+                '--overlay1-color. Default: hot/4hot.'
+            ),
             dest='overlay3_color')
 
 parser.add_argument('--overlay3-name',
@@ -246,7 +257,10 @@ parser.add_argument('--overlay4-color',
             metavar='overlay4_color',
             type=str,
             action='store',
-            help='MRIcroGL colorname for fourth overlay. If omitted, defaults to blue.',
+            help=(
+                'Colour map for fourth overlay (MRIcroGL + colorbar). Same accepted names as '
+                '--overlay1-color. Default: blue/3blue.'
+            ),
             dest='overlay4_color')
 
 parser.add_argument('--overlay4-name',
