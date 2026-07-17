@@ -292,12 +292,41 @@ parser.add_argument('--overlay4-opacity',
             help='Opacity for fourth overlay layer (0-100). If omitted, defaults to 35.',
             dest='overlay4_opacity')
 
+parser.add_argument('--panels',
+            metavar='panel',
+            type=str,
+            nargs='*',
+            choices=[
+                't1_overview',
+                't1_overlay_overview',
+                't2_overview',
+                'multimodal_overview',
+                'multimodal_overview_other_angles',
+                'quant_map_mm_panel',
+                'standard',
+                'all',
+            ],
+            default=[],
+            action='store',
+            help=(
+                'Display panels to generate after erosion (default: none). '
+                'IDs: t1_overview, t1_overlay_overview, t2_overview, multimodal_overview, '
+                'multimodal_overview_other_angles, quant_map_mm_panel. '
+                'Aliases: standard (structural T1/T2/multimodal), all. '
+                'Omit --panels on the main command for preprocess/erode only; '
+                'use t2vv_render_existing --panels ... to generate displays later.'
+            ),
+            dest='panels')
+
 parser.add_argument('--panel-preset',
             metavar='panel_preset',
             type=str,
             choices=['quant_map_mm_panel'],
             action='store',
-            help='Optional advanced panel preset. Currently supported: quant_map_mm_panel.',
+            help=(
+                'Deprecated. Prefer --panels quant_map_mm_panel. '
+                'Still accepted as an alias that requests the quant_map_mm_panel output.'
+            ),
             dest='panel_preset')
 
 parser.add_argument('--qmm-main-erode-depth',
@@ -381,12 +410,34 @@ for overlay_idx in range(1, 5):
     if path_val and name_val and any(ch.isspace() for ch in str(name_val)):
         parser.error(f'--overlay{overlay_idx}-name please specify a name without spaces.')
 
-# Validation for advanced panel preset
-if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
+# Resolve requested display panels (aliases + deprecated --panel-preset).
+# Import here so argparse setup above stays free of package-side effects.
+from . import panel_registry as _panel_registry
+
+try:
+    _resolved_panels = _panel_registry.resolve_requested_panels(
+        getattr(args, "panels", None),
+        panel_preset=getattr(args, "panel_preset", None),
+    )
+except ValueError as e:
+    parser.error(str(e))
+
+args.resolved_panels = _resolved_panels
+
+if getattr(args, "panel_preset", None) == "quant_map_mm_panel":
+    print(
+        "[WARNING] --panel-preset is deprecated; prefer "
+        "'--panels quant_map_mm_panel'."
+    )
+
+# Validation for quant_map_mm_panel when that panel was requested
+if "quant_map_mm_panel" in args.resolved_panels:
     if not args.flair:
-        parser.error('--panel-preset quant_map_mm_panel requires a FLAIR input via -f.')
+        parser.error('--panels quant_map_mm_panel requires a FLAIR input via -f.')
     if not args.overlay1_path or not args.overlay2_path:
-        parser.error('--panel-preset quant_map_mm_panel requires both --overlay1-path and --overlay2-path.')
+        parser.error(
+            '--panels quant_map_mm_panel requires both --overlay1-path and --overlay2-path.'
+        )
     has_any_t2 = any([
         bool(args.t2_3d),
         bool(args.t2_sag),
@@ -396,12 +447,28 @@ if getattr(args, 'panel_preset', None) == 'quant_map_mm_panel':
         bool(args.t2_tra),
     ])
     if not has_any_t2:
-        parser.error('--panel-preset quant_map_mm_panel requires at least one T2 input (3D T2 or one/more T2 planes).')
+        parser.error(
+            '--panels quant_map_mm_panel requires at least one T2 input '
+            '(3D T2 or one/more T2 planes).'
+        )
     if int(args.qmm_main_erode_depth) < 0:
         parser.error('--qmm-main-erode-depth must be >= 0.')
     if args.qmm_angles:
         # Preserve user order while removing accidental duplicates.
         args.qmm_angles = list(dict.fromkeys(args.qmm_angles))
+
+if "t1_overlay_overview" in args.resolved_panels:
+    if not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
+        parser.error(
+            '--panels t1_overlay_overview requires at least one overlay path '
+            '(--overlay1-path through --overlay4-path).'
+        )
+
+if args.export_overlay_dicom and "t1_overlay_overview" not in args.resolved_panels:
+    parser.error(
+        '--export-overlay-dicom requires --panels t1_overlay_overview '
+        '(and at least one overlay path).'
+    )
 
 if args.export_overlay_dicom and not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
     parser.error('--export-overlay-dicom requires at least one overlay path (--overlay1-path through --overlay4-path).')
@@ -417,5 +484,9 @@ if args.render_existing_erosions:
         parser.error('--render-existing-erosions requires --render-source-dir.')
     if not os.path.isdir(args.render_source_dir):
         parser.error(f'--render-source-dir not found or is not a folder: {args.render_source_dir}')
-
+    if not args.resolved_panels:
+        parser.error(
+            'Render-existing mode requires --panels (for example: '
+            '--panels standard  or  --panels t1_overlay_overview).'
+        )
 

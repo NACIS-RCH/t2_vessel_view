@@ -45,7 +45,7 @@ def _has_any_flag(args, flags):
 
 
 def _uses_quant_map_panel(args):
-    """Return True if pass-through args request the quant_map_mm_panel preset."""
+    """Return True if pass-through args request the quant_map_mm_panel output."""
     # Check each argument and its index so we can read the following value when needed.
     for idx, arg in enumerate(args):
         # Handles split form: --panel-preset quant_map_mm_panel.
@@ -54,9 +54,37 @@ def _uses_quant_map_panel(args):
         # Handles equals form: --panel-preset=quant_map_mm_panel.
         if arg.startswith("--panel-preset="):
             return arg.split("=", 1)[1] == "quant_map_mm_panel"
-    # If no panel preset was requested, this is not quant-map-panel mode.
+        # Handles --panels ... quant_map_mm_panel (or --panels=quant_map_mm_panel).
+        if arg == "--panels":
+            # Collect following tokens until the next flag.
+            j = idx + 1
+            while j < len(args) and not str(args[j]).startswith("-"):
+                if args[j] in ("quant_map_mm_panel", "all"):
+                    return True
+                j += 1
+        if arg.startswith("--panels="):
+            values = arg.split("=", 1)[1].split()
+            if "quant_map_mm_panel" in values or "all" in values:
+                return True
+    # If no panel request matches, this is not quant-map-panel mode.
     return False
 
+
+def _has_panels_flag(args):
+    """Return True if pass-through args include --panels with at least one value."""
+    for idx, arg in enumerate(args):
+        if arg == "--panels":
+            # At least one non-flag value must follow.
+            if idx + 1 < len(args) and not str(args[idx + 1]).startswith("-"):
+                return True
+        if arg.startswith("--panels=") and arg.split("=", 1)[1].strip():
+            return True
+        # Deprecated alias still counts as requesting a panel.
+        if arg == "--panel-preset" and idx + 1 < len(args):
+            return True
+        if arg.startswith("--panel-preset="):
+            return True
+    return False
 
 def _discover_inputs(source_dir):
     """Find validation filler images from an existing T2VesselView output folder."""
@@ -186,7 +214,19 @@ def main(argv=None):
     # Define the small CLI for this helper. All unknown arguments are forwarded
     # to the main t2_vessel_view command.
     parser = argparse.ArgumentParser(
-        description="Rerender T2VesselView outputs from an existing T2VesselView output folder."
+        description=(
+            "Rerender T2VesselView display panels from an existing output folder. "
+            "Requires --panels (for example: --panels standard)."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  t2vv_render_existing --source-dir /out --panels standard\n"
+            "  t2vv_render_existing --source-dir /out --panels t1_overlay_overview "
+            "--overlay1-path PET.nii.gz --overlay1-color green\n"
+            "  t2vv_render_existing --source-dir /out --panels quant_map_mm_panel "
+            "--overlay1-path CBF.nii.gz --overlay2-path ATT.nii.gz"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     # The user must point to the exact existing output folder to avoid guessing
     # among multiple renamed runs.
@@ -208,6 +248,12 @@ def main(argv=None):
     # Fail early if the requested existing output folder is not present.
     if not os.path.isdir(args.source_dir):
         parser.error(f"--source-dir not found or is not a folder: {args.source_dir}")
+
+    if not _has_panels_flag(passthrough_args):
+        parser.error(
+            "t2vv_render_existing requires --panels "
+            "(for example: --panels standard  or  --panels t1_overlay_overview)."
+        )
 
     # Build the real main-pipeline command, converting helper errors into tidy
     # command-line parser errors.
