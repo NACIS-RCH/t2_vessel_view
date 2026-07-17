@@ -169,6 +169,7 @@ def get_crop_dimensions(images: List[str], background_colour: List[int], thresho
 
     Returns: (left, top, width, height) suitable for pyvips.crop.
     """
+    print(f"[INFO] Finding crop trim across {len(images)} PNG(s)...")
     # Find the first usable sample (non-empty brain extent). If none, use the first file.
     sample = None
     for path in images:
@@ -216,6 +217,7 @@ def get_crop_dimensions(images: List[str], background_colour: List[int], thresho
     width_expanded = min(sample.width - left_expanded, width_crop + pad * 2)
     height_expanded = min(sample.height - top_expanded, height_crop + pad * 2)
 
+    print("[INFO] Crop trim complete.")
     return left_expanded, top_expanded, width_expanded, height_expanded
 
 
@@ -227,8 +229,9 @@ def crop_image_series(images: List[str], output_directory: str, dimensions: Tupl
     outpath = os.path.join(output_directory, '0_cropped_series')
     _ensure_dir(outpath)
     left, top, width, height = dimensions
+    print(f"[INFO] Writing {len(images)} cropped PNG(s) to {outpath}...")
     out_files = []
-    for path in images:
+    for idx, path in enumerate(images, start=1):
         img = pyvips.Image.new_from_file(path)
         try:
             img = img.crop(left, top, width, height)  # fast region extraction
@@ -238,6 +241,9 @@ def crop_image_series(images: List[str], output_directory: str, dimensions: Tupl
         out_name = os.path.join(outpath, f"cropped_{os.path.basename(path)}")
         img.write_to_file(out_name)
         out_files.append(out_name)
+        if len(images) >= 10 and idx % 10 == 0:
+            print(f"[INFO] Cropped {idx}/{len(images)} PNG(s)...")
+    print(f"[INFO] Wrote {len(out_files)} cropped PNG(s).")
     return sorted(out_files)
 
 
@@ -649,6 +655,7 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
 def concat_one_row(n: int, top_lists: List[List[str]], output_location: str) -> None:
     """Concatenate n columns (2–4 images per row) into one wide row per depth."""
     _ensure_dir(output_location)
+    print(f"[INFO] Stitching {n} panel(s) into {output_location}...")
     for idx in range(n):
         # Collect each column image at this depth
         paths = [plist[idx] for plist in top_lists]
@@ -665,11 +672,13 @@ def concat_one_row(n: int, top_lists: List[List[str]], output_location: str) -> 
             new_im.paste(im, (x, 0))
             x += im.size[0]
         new_im.save(os.path.join(output_location, f'concat_{idx:03}.png'))
+    print(f"[INFO] Stitched {n} panel(s).")
 
 
 def concat_two_rows(n: int, top_lists: List[List[str]], bottom_lists: List[List[str]], output_location: str) -> None:
     """Concatenate two rows (top and bottom) into a panel per depth."""
     _ensure_dir(output_location)
+    print(f"[INFO] Stitching {n} panel(s) into {output_location}...")
     for idx in range(n):
         # Gather top row images and compute dimensions
         top_paths = [plist[idx] for plist in top_lists]
@@ -697,6 +706,7 @@ def concat_two_rows(n: int, top_lists: List[List[str]], bottom_lists: List[List[
             x += im.size[0]
 
         new_im.save(os.path.join(output_location, f'concat_{idx:03}.png'))
+    print(f"[INFO] Stitched {n} panel(s).")
 
 
 def export_pptx_from_folder(folder: str, pptx_basename: str) -> None:
@@ -1379,6 +1389,10 @@ def _prepare_qmm_annotated_series(
     if not selected_paths:
         return []
 
+    print(
+        f"[INFO] Preparing annotated series for {modality_label} ({angle}) "
+        f"with {len(selected_paths)} image(s)..."
+    )
     # Keep qmm behavior aligned with other presets: crop first, then annotate.
     try:
         dims = get_crop_dimensions(selected_paths, background_rgb, threshold)
