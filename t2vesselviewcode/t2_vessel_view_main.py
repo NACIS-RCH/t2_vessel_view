@@ -247,8 +247,11 @@ def _validate_render_existing_inputs(panel_preset):
         needs_cor = any(ang in requested_qmm_angles for ang in ("anterior", "posterior"))
         needs_tra = any(ang in requested_qmm_angles for ang in ("superior", "inferior"))
         has_t2_3d = bool(eroded_sets["T2 3D"])
-        if needs_sag and not (eroded_sets["T2 sagittal"] or has_t2_3d):
-            raise ValueError("quant_map_mm_panel left/right angles require T2 sagittal or fallback T2 3D eroded files.")
+        if needs_sag and not (eroded_sets["T2 sagittal"] or has_t2_3d or eroded_sets["T2 transverse"]):
+            raise ValueError(
+                "quant_map_mm_panel left/right angles require T2 sagittal, "
+                "fallback T2 3D, or fallback T2 transverse eroded files."
+            )
         if needs_cor and not (eroded_sets["T2 coronal"] or has_t2_3d):
             raise ValueError("quant_map_mm_panel anterior/posterior angles require T2 coronal or fallback T2 3D eroded files.")
         if needs_tra and not (eroded_sets["T2 transverse"] or has_t2_3d):
@@ -490,6 +493,9 @@ def _run_render_outputs(panel_preset):
             for ang in requested_qmm_angles:
                 if ang not in angle_to_t2_source and t2_3d_subset:
                     angle_to_t2_source[ang] = "T2_3d"
+            for ang in ("left", "right"):
+                if ang in requested_qmm_angles and ang not in angle_to_t2_source and t2_tra_subset:
+                    angle_to_t2_source[ang] = "T2_tra"
             png_postprocess.run_preset_quant_map_mm_panel(
                 raw_root=dir_structure.renders_qmm_raw_dir,
                 angle_to_t2_source=angle_to_t2_source,
@@ -1192,6 +1198,10 @@ def main():
             for ang in requested_qmm_angles:
                 if ang not in angle_to_t2_source and t2_3d_subset:
                     angle_to_t2_source[ang] = "T2_3d"
+            # If left/right still have no sagittal or 3D T2 source, use transverse T2.
+            for ang in ("left", "right"):
+                if ang in requested_qmm_angles and ang not in angle_to_t2_source and t2_tra_subset:
+                    angle_to_t2_source[ang] = "T2_tra"
 
             png_postprocess.run_preset_quant_map_mm_panel(
                 raw_root=dir_structure.renders_qmm_raw_dir,
