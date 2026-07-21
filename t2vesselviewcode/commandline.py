@@ -346,6 +346,15 @@ parser.add_argument('--qmm-angles',
             help='Optional list of angles for quant_map_mm_panel. If omitted, all six are used.',
             dest='qmm_angles')
 
+parser.add_argument('--keep-debug-images',
+            action='store_true',
+            help=(
+                'Keep preprocess (and other) intermediate/debug NIfTI files on disk. '
+                'By default those step files are removed after finals are written, '
+                'and pure debug writes via write_debug_image are skipped.'
+            ),
+            dest='keep_debug_images')
+
 parser.add_argument('--export-overlay-dicom',
             action='store_true',
             help='Also export the T1 overlay overview stitched PNG panels as a local DICOM Secondary Capture folder. Requires at least one overlay path.',

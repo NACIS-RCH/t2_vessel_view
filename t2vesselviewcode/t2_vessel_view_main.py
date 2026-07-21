@@ -621,6 +621,11 @@ def main():
     if not run_dependency_preflight():
         sys.exit(1)
 
+    # Default: skip pure debug NIfTI writes; --keep-debug-images retains them.
+    utils.save_debug_images = bool(getattr(commandline.args, "keep_debug_images", False))
+    if utils.save_debug_images:
+        print("[INFO] --keep-debug-images enabled: intermediate/debug NIfTIs will be retained.")
+
     auto_method = getattr(commandline.args, "auto_mask_method", "bet")
     requested_panels = set(getattr(commandline.args, "resolved_panels", set()) or set())
     render_existing_erosions = bool(getattr(commandline.args, "render_existing_erosions", False))

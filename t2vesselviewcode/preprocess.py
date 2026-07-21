@@ -16,6 +16,67 @@ from . import commandline
 
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
+# ------------------------ Cleanup helpers ------------------------
+
+def _keep_debug_images():
+    """Return True when the user asked to retain intermediate/debug NIfTIs."""
+    return bool(getattr(commandline.args, "keep_debug_images", False))
+
+
+def _is_under_directory(path, directory):
+    """Return True if path is a file under directory (never delete outside Processing)."""
+    if not path or not directory:
+        return False
+    abs_path = os.path.abspath(path)
+    abs_dir = os.path.abspath(directory)
+    return abs_path.startswith(abs_dir + os.sep) and os.path.isfile(abs_path)
+
+
+def _remove_paths(paths, allowed_directory=None):
+    """Delete existing files from a list of paths; ignore missing entries.
+
+    When allowed_directory is set, only delete files under that directory so
+    user-supplied originals outside Processing/ are never removed.
+    """
+    removed = []
+    for path in paths:
+        if not path:
+            continue
+        if allowed_directory is not None and not _is_under_directory(path, allowed_directory):
+            continue
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                removed.append(path)
+            except OSError as e:
+                print(f"[WARNING] Could not remove intermediate file {path}: {e}")
+    return removed
+
+
+def _remove_glob(directory, pattern):
+    """Delete files matching a glob pattern under directory."""
+    if not directory or not os.path.isdir(directory):
+        return []
+    return _remove_paths(
+        sorted(glob.glob(os.path.join(directory, pattern))),
+        allowed_directory=directory,
+    )
+
+
+def _cleanup_preprocess_intermediates(directory, paths=None, glob_patterns=None, kept_label="final Preprocessed image"):
+    """Remove listed intermediates unless --keep-debug-images was set."""
+    if _keep_debug_images():
+        return
+    removed = _remove_paths(list(paths or []), allowed_directory=directory)
+    for pattern in glob_patterns or []:
+        removed.extend(_remove_glob(directory, pattern))
+    if removed:
+        print(
+            f"[INFO] Removed {len(removed)} preprocess intermediate(s) from "
+            f"{directory} (kept {kept_label})."
+        )
+
+
 # ------------------------ Main functions ------------------------
 
 def get_preprocessed_dir(image_type):
@@ -63,6 +124,7 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
         return None
     
     output_dir = get_preprocessed_dir(input_filetype_string)
+    temp_nifti_path = None
     print(f"[INFO] Converting DICOM to NIfTI for {input_filetype_string}")
     # Check if input is DICOM and convert to NIfTI if needed
     if os.path.isdir(raw_input_file) or raw_input_file.lower().endswith('.dcm'):
@@ -128,6 +190,15 @@ def convert_and_reorient(raw_input_file, input_filetype_string):
     data = img_ras.get_fdata(dtype=np.float32)
     nib.Nifti1Image(data, img_ras.affine, header=hdr).to_filename(reoriented_im_path)
 
+    # Safe to drop the DICOM→NIfTI temp now that _ro exists. Never delete _ro here:
+    # preprocess_main_image / preprocess_n4_reg still need that path.
+    if temp_nifti_path:
+        _cleanup_preprocess_intermediates(
+            output_dir,
+            paths=[temp_nifti_path],
+            kept_label=f"{input_filetype_string}_ro.nii.gz"
+        )
+
     return reoriented_im_path
 
 def preprocess_main_image(input_t1):
@@ -187,6 +258,19 @@ def preprocess_main_image(input_t1):
     ## need to write this out partly because ANTS needs it 
     sitk.WriteImage(main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path)
     utils.write_debug_image(main_image_crop_n4_rs_resc, "main_image_crop_n4_rs_resc.nii.gz", output_dir)
+
+    # Delete pipeline temps only after the final T1 exists. Keep Preprocessed_main_image.nii.gz.
+    _cleanup_preprocess_intermediates(
+        output_dir,
+        paths=[
+            input_t1,
+            os.path.join(output_dir, "T1_crop.nii.gz"),
+            os.path.join(output_dir, "t1_temp.nii.gz"),
+            os.path.join(output_dir, "main_image_crop_n4_rs_resc.nii.gz"),
+        ],
+        glob_patterns=["*to_ROI*", "*_to_roi*"],
+        kept_label="Preprocessed_main_image.nii.gz",
+    )
     
     return main_image_crop_n4_rs_resc, main_image_crop_n4_rs_resc_path
 
@@ -255,6 +339,20 @@ def preprocess_n4_reg(input_raw, input_imagetype_string, preprocessed_main_image
     
     preprocessed_im_path = os.path.join(output_dir, f"Preprocessed_{input_imagetype_string}.nii.gz")
     sitk.WriteImage(registered_im_resc, preprocessed_im_path)
+
+    # Delete pipeline temps only after the final Preprocessed file exists.
+    # Keep Preprocessed_{tag}.nii.gz — postprocess_t2 / masking still need it.
+    _cleanup_preprocess_intermediates(
+        output_dir,
+        paths=[
+            input_raw,
+            im_n4_path,
+            registered_im_path,
+            os.path.join(output_dir, f"{input_imagetype_string}_temp.nii.gz"),
+            os.path.join(output_dir, f"{input_imagetype_string}_n4_debug.nii.gz"),
+        ],
+        kept_label=f"Preprocessed_{input_imagetype_string}.nii.gz",
+    )
     
     return preprocessed_im_path, registered_im_resc
 
@@ -349,6 +447,20 @@ def register_user_mask_to_preprocessed_t1(
     registered_mask_sitk = sitk.ReadImage(registered_mask_path)
     registered_mask_binary = sitk.Cast(registered_mask_sitk > 0.5, sitk.sitkUInt8)
     sitk.WriteImage(registered_mask_binary, registered_mask_path)
+
+    # Keep registered_user_mask_to_preprocessed_t1.nii.gz; drop registration temps.
+    _cleanup_preprocess_intermediates(
+        output_dir,
+        paths=[
+            user_mask_ro_path,
+            user_mask_structural_ro_path,
+            structural_n4_path,
+            os.path.join(output_dir, "user_mask_temp.nii.gz"),
+            os.path.join(output_dir, "user_mask_structural_temp.nii.gz"),
+            os.path.join(output_dir, "user_mask_structural_n4_debug.nii.gz"),
+        ],
+        kept_label="registered_user_mask_to_preprocessed_t1.nii.gz",
+    )
 
     return registered_mask_path
 

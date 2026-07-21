@@ -48,6 +48,10 @@ export T2VV_MRICROGL_PATH="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL"
 python -m t2vesselviewcode.t2_vessel_view_main -h
 ```
 
+By default the main command **preprocesses and erodes only** (no PPTX panels).
+Generate displays afterward with `t2vv_render_existing --panels ...`, or pass
+`--panels` on the main command for a one-shot run.
+
 ### If the package asks you to "set a path"
 Copy/paste these commands in Terminal before running the pipeline.
 
@@ -69,7 +73,7 @@ source ~/.bashrc
 ```
 
 ## Usage
-### Minimal run (required inputs)
+### Minimal run (preprocess / erode only)
 ```bash
 python -m t2vesselviewcode.t2_vessel_view_main \
   -d /path/to/mri_dir \
@@ -84,7 +88,7 @@ python -m t2vesselviewcode.t2_vessel_view_main \
   -f /path/to/FLAIR.nii.gz
 ```
 
-### Typical full run (with outputs + T2 series)
+### Typical preprocess run (with T2 series)
 ```bash
 python -m t2vesselviewcode.t2_vessel_view_main \
   -d /path/to/mri_dir \
@@ -94,6 +98,30 @@ python -m t2vesselviewcode.t2_vessel_view_main \
   -s /path/to/T2_tse_sag.nii.gz \
   -c /path/to/T2_tse_cor.nii.gz \
   -t /path/to/T2_tse_tra.nii.gz
+```
+
+### Generate display panels from an existing output folder
+```bash
+# Structural panels (T1, T2, multimodal)
+t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* --panels standard
+
+# T1 + overlay (e.g. PET)
+t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
+  --panels t1_overlay_overview \
+  --overlay1-path /path/to/PET.nii.gz \
+  --overlay1-name PET \
+  --overlay1-color green \
+  --overlay1-min 0 --overlay1-max 5
+```
+
+### One-shot: preprocess and panels in a single command
+```bash
+python -m t2vesselviewcode.t2_vessel_view_main \
+  -d /path/to/mri_dir \
+  -o /path/to/output_dir \
+  -i /path/to/T1_raw.nii.gz \
+  -s /path/to/T2_tse_sag.nii.gz \
+  --panels standard
 ```
 
 ### For multiple unilateral sagittal T2 acquisitions
@@ -114,10 +142,9 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 
 
 ## Outputs
-- Eroded NIfTI volumes per modality and depth
-- 3D renders in `renders/.../by_angle/<angle>/...png`
+- Eroded NIfTI volumes per modality and depth (main command default)
+- Optional 3D renders and PPTX panels when `--panels` is set (or via `t2vv_render_existing`)
 - QC overlays (mask vs anatomy)
-- Optional PPTX summaries (stitched panels)
 
 ## Configuration
 - **MRIcroGL path**: set `T2VV_MRICROGL_PATH` to the executable if not in default location
