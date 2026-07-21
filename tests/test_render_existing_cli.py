@@ -36,7 +36,7 @@ class TestRenderExistingCli(unittest.TestCase):
 
         cmd = _build_command(
             self.source_dir,
-            ["--overlay1-path", "/tmp/overlay.nii.gz"]
+            ["--panels", "t1_overlay_overview", "--overlay1-path", "/tmp/overlay.nii.gz"]
         )
 
         self.assertIn("-i", cmd)
@@ -45,6 +45,7 @@ class TestRenderExistingCli(unittest.TestCase):
         self.assertIn("--render-source-dir", cmd)
         self.assertEqual(cmd[cmd.index("--render-source-dir") + 1], self.source_dir)
         self.assertIn("--overlay1-path", cmd)
+        self.assertIn("--panels", cmd)
 
     def test_build_command_auto_fills_quant_map_required_inputs(self):
         flair_path = self._touch("Processing/Preprocessed_FLAIR/Preprocessed_flair.nii.gz")
@@ -53,13 +54,29 @@ class TestRenderExistingCli(unittest.TestCase):
 
         cmd = _build_command(
             self.source_dir,
-            ["--panel-preset", "quant_map_mm_panel"]
+            ["--panels", "quant_map_mm_panel"]
         )
 
         self.assertIn("-f", cmd)
         self.assertEqual(cmd[cmd.index("-f") + 1], flair_path)
         self.assertIn("-s", cmd)
         self.assertEqual(cmd[cmd.index("-s") + 1], t2_path)
+
+    def test_helper_requires_panels(self):
+        self._touch("Processing/Preprocessed_T1/Preprocessed_main_image.nii.gz")
+        with self.assertRaises(SystemExit):
+            render_existing_cli.main(["--source-dir", self.source_dir, "--dry-run"])
+
+    def test_uses_quant_map_from_panels_flag(self):
+        self.assertTrue(
+            render_existing_cli._uses_quant_map_panel(["--panels", "quant_map_mm_panel"])
+        )
+        self.assertTrue(
+            render_existing_cli._uses_quant_map_panel(["--panels", "standard", "quant_map_mm_panel"])
+        )
+        self.assertFalse(
+            render_existing_cli._uses_quant_map_panel(["--panels", "standard"])
+        )
 
 
 if __name__ == "__main__":
