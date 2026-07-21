@@ -893,6 +893,9 @@ def main():
         if postprocessed_t2_3d_image:
             res_t2_3d = masking.multiply_masks_by_images(postprocessed_t2_3d_image, "t2_3d", dir_structure.eroded_nifti_t2_3d_dir, zero_padded_erode_depths_list, eroded_masks_dict)
 
+        # After Eroded_nifti outputs exist, drop Masks intermediates (keep Preprocessed_mask).
+        masking.cleanup_masks_directory()
+
     # Shared gated panel render (same path as render-existing mode).
     return _run_render_outputs(requested_panels)
 

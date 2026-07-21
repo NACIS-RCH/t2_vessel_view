@@ -20,47 +20,22 @@ TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
 def _keep_debug_images():
     """Return True when the user asked to retain intermediate/debug NIfTIs."""
-    return bool(getattr(commandline.args, "keep_debug_images", False))
+    return utils.keep_debug_images()
 
 
 def _is_under_directory(path, directory):
     """Return True if path is a file under directory (never delete outside Processing)."""
-    if not path or not directory:
-        return False
-    abs_path = os.path.abspath(path)
-    abs_dir = os.path.abspath(directory)
-    return abs_path.startswith(abs_dir + os.sep) and os.path.isfile(abs_path)
+    return utils.is_under_directory(path, directory) and os.path.isfile(path)
 
 
 def _remove_paths(paths, allowed_directory=None):
-    """Delete existing files from a list of paths; ignore missing entries.
-
-    When allowed_directory is set, only delete files under that directory so
-    user-supplied originals outside Processing/ are never removed.
-    """
-    removed = []
-    for path in paths:
-        if not path:
-            continue
-        if allowed_directory is not None and not _is_under_directory(path, allowed_directory):
-            continue
-        if os.path.isfile(path):
-            try:
-                os.remove(path)
-                removed.append(path)
-            except OSError as e:
-                print(f"[WARNING] Could not remove intermediate file {path}: {e}")
-    return removed
+    """Delete existing files from a list of paths; ignore missing entries."""
+    return utils.remove_paths(paths, allowed_directory=allowed_directory)
 
 
 def _remove_glob(directory, pattern):
     """Delete files matching a glob pattern under directory."""
-    if not directory or not os.path.isdir(directory):
-        return []
-    return _remove_paths(
-        sorted(glob.glob(os.path.join(directory, pattern))),
-        allowed_directory=directory,
-    )
+    return utils.remove_glob(directory, pattern)
 
 
 def _cleanup_preprocess_intermediates(directory, paths=None, glob_patterns=None, kept_label="final Preprocessed image"):
