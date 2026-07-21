@@ -7,8 +7,9 @@ import matplotlib.pyplot as plt
 from matplotlib import patheffects as pe
 from . import dir_structure
 
-# Flag to control whether debug images are saved
-save_debug_images = True
+# Flag to control whether debug images are saved.
+# Default False; set True when --keep-debug-images is passed on the CLI.
+save_debug_images = False
 
 # Helper function to get output directory
 def get_output_dir():
