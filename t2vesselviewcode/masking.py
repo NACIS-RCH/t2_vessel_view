@@ -135,6 +135,12 @@ def main_mask_operations(resampled_mask):
     
     ## Binarize the smoothed mask using a threshold of 0.5
     bin_sm_rxs_mask = sitk.BinaryThreshold(smoothed_rxs_mask, lowerThreshold=0.5, upperThreshold=1.0, insideValue=1, outsideValue=0)
+    # Always keep the cleaned binary brain mask for users (mirrors Preprocessed_*.nii.gz).
+    preprocessed_mask_path = os.path.join(
+        dir_structure.processing_mask_dir, utils.PREPROCESSED_MASK_FILENAME
+    )
+    sitk.WriteImage(bin_sm_rxs_mask, preprocessed_mask_path)
+    print(f"[INFO] Saved cleaned brain mask: {preprocessed_mask_path}")
     utils.write_debug_image(bin_sm_rxs_mask, "bin_smoothed_rxs_mask.nii.gz", dir_structure.processing_mask_dir)
     
     ## make inverse of that mask
@@ -270,3 +276,43 @@ def multiply_masks_by_images(image_to_erode, filetype_string, directory_for_outp
 
 
     return
+
+
+def cleanup_masks_directory(mask_dir=None):
+    """
+    Remove Processing/Masks intermediates after Eroded_nifti outputs exist.
+
+    Keeps Preprocessed_mask.nii.gz (cleaned binary brain mask). Skips cleanup
+    entirely when --keep-debug-images is set.
+    """
+    if utils.keep_debug_images():
+        print("[INFO] Keeping Processing/Masks intermediates (--keep-debug-images).")
+        return
+
+    if mask_dir is None:
+        mask_dir = dir_structure.processing_mask_dir
+    if not mask_dir or not os.path.isdir(mask_dir):
+        return
+
+    keep_name = utils.PREPROCESSED_MASK_FILENAME
+    removed_count = 0
+    for name in os.listdir(mask_dir):
+        if name == keep_name:
+            continue
+        path = os.path.join(mask_dir, name)
+        if not utils.is_under_directory(path, mask_dir):
+            continue
+        if os.path.isfile(path):
+            if utils.remove_paths([path], allowed_directory=mask_dir):
+                removed_count += 1
+        elif os.path.isdir(path):
+            if utils.remove_tree(path, allowed_directory=mask_dir):
+                removed_count += 1
+
+    if removed_count:
+        print(
+            f"[INFO] Removed {removed_count} mask intermediate(s) from {mask_dir} "
+            f"(kept {keep_name})."
+        )
+    elif os.path.isfile(os.path.join(mask_dir, keep_name)):
+        print(f"[INFO] Mask cleanup complete (kept {keep_name}).")

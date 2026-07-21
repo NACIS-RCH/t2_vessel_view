@@ -1,4 +1,6 @@
 import os
+import glob
+import shutil
 import SimpleITK as sitk
 import ants
 from . import commandline
@@ -11,9 +13,14 @@ from . import dir_structure
 # Default False; set True when --keep-debug-images is passed on the CLI.
 save_debug_images = False
 
+# Final cleaned brain mask kept under Processing/Masks/ after default cleanup.
+PREPROCESSED_MASK_FILENAME = "Preprocessed_mask.nii.gz"
+
+
 # Helper function to get output directory
 def get_output_dir():
     return commandline.args.output_dir or commandline.args.mri_dir
+
 
 def write_debug_image(image_object, output_file, output_directory):
     """
@@ -31,7 +38,74 @@ def write_debug_image(image_object, output_file, output_directory):
     """
     if save_debug_images:
         path = os.path.join(output_directory, output_file) 
-        sitk.WriteImage(image_object, path) 
+        sitk.WriteImage(image_object, path)
+
+
+# ------------------------ Intermediate cleanup helpers ------------------------
+
+def keep_debug_images():
+    """Return True when the user asked to retain intermediate/debug NIfTIs."""
+    return bool(getattr(commandline.args, "keep_debug_images", False)) or bool(save_debug_images)
+
+
+def is_under_directory(path, directory):
+    """Return True if path is under directory (never delete outside Processing)."""
+    if not path or not directory:
+        return False
+    abs_path = os.path.abspath(path)
+    abs_dir = os.path.abspath(directory)
+    return abs_path == abs_dir or abs_path.startswith(abs_dir + os.sep)
+
+
+def remove_paths(paths, allowed_directory=None):
+    """Delete existing files from a list of paths; ignore missing entries.
+
+    When allowed_directory is set, only delete files under that directory so
+    user-supplied originals outside Processing/ are never removed.
+    """
+    removed = []
+    for path in paths:
+        if not path:
+            continue
+        if allowed_directory is not None:
+            if not is_under_directory(path, allowed_directory):
+                continue
+            if not os.path.isfile(path):
+                continue
+        if os.path.isfile(path):
+            try:
+                os.remove(path)
+                removed.append(path)
+            except OSError as e:
+                print(f"[WARNING] Could not remove intermediate file {path}: {e}")
+    return removed
+
+
+def remove_glob(directory, pattern):
+    """Delete files matching a glob pattern under directory."""
+    if not directory or not os.path.isdir(directory):
+        return []
+    return remove_paths(
+        sorted(glob.glob(os.path.join(directory, pattern))),
+        allowed_directory=directory,
+    )
+
+
+def remove_tree(path, allowed_directory=None):
+    """Delete a directory tree if it exists and is under allowed_directory."""
+    if not path or not os.path.isdir(path):
+        return False
+    if allowed_directory is not None and not is_under_directory(path, allowed_directory):
+        return False
+    # Refuse to delete the allowed directory root itself.
+    if allowed_directory is not None and os.path.abspath(path) == os.path.abspath(allowed_directory):
+        return False
+    try:
+        shutil.rmtree(path)
+        return True
+    except OSError as e:
+        print(f"[WARNING] Could not remove intermediate directory {path}: {e}")
+        return False
 
 # Robust ANTsPy image read function for all versions
 def read_ants_image(path):
