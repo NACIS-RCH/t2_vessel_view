@@ -81,6 +81,7 @@ def _set_t2vv_root(t2vv_root):
     renders_qmm_raw_dir = os.path.join(renders_qmm_dir, "raw")
     renders_qmm_stitched_dir = os.path.join(renders_qmm_dir, "stitched")
 
+    # Full path registry (for reference / tests). Create uses core + modality lists.
     directory_structure = [
         main_t2vv_dir,
         eroded_nifti_dir,
@@ -126,17 +127,102 @@ def use_existing_t2vesselview_dir(existing_root):
 
 _set_t2vv_root(os.path.join(base_directory, "T2VesselView"))
 
-def create_directories():
-    """Create the directory structure."""
-    for directory in directory_structure:
+
+def core_directories():
+    """Directories always created for a run (modality/panel trees are on demand)."""
+    return [
+        main_t2vv_dir,
+        processing_dir,
+        processing_figures_dir,
+        processing_log_dir,
+        processing_mask_dir,
+        processed_t1_dir,
+        eroded_nifti_dir,
+        eroded_nifti_t1_dir,
+        renders_dir,
+    ]
+
+
+def modality_directories_for_args(args):
+    """Return preprocess/erode folders for modalities present on the CLI.
+
+    Panel/render/DICOM/PowerPoint trees are not created here; writers call
+    makedirs when those outputs are actually produced (including later
+    t2vv_render_existing runs).
+    """
+    dirs = []
+    if getattr(args, "flair", None):
+        dirs.extend([processed_flair_dir, eroded_nifti_flair_dir])
+    if getattr(args, "t2_cor", None):
+        dirs.extend([processed_t2_cor_dir, eroded_nifti_t2_cor_dir])
+    if getattr(args, "t2_tra", None):
+        dirs.extend([processed_t2_tra_dir, eroded_nifti_t2_tra_dir])
+    if (
+        getattr(args, "t2_sag", None)
+        or getattr(args, "t2_sag_left", None)
+        or getattr(args, "t2_sag_right", None)
+    ):
+        dirs.extend([processed_t2_sag_dir, eroded_nifti_t2_sag_dir])
+    if getattr(args, "t2_3d", None):
+        dirs.extend([processed_t2_3d_dir, eroded_nifti_t2_3d_dir])
+    return dirs
+
+
+def create_directories(args=None):
+    """Create core dirs plus folders for modalities present in args.
+
+    Path globals always exist via _set_t2vv_root; only mkdir is selective.
+    Writers must still use os.makedirs(..., exist_ok=True) before writing so
+    later add-on modality or render_existing steps can create missing folders.
+    """
+    if args is None:
+        args = commandline.args
+    to_create = list(core_directories()) + list(modality_directories_for_args(args))
+    # Preserve order while dropping duplicates.
+    seen = set()
+    for directory in to_create:
+        if directory in seen:
+            continue
+        seen.add(directory)
         os.makedirs(directory, exist_ok=True)
+
+
+def prune_empty_directories(root=None):
+    """Remove empty directories under the T2VesselView root (bottom-up).
+
+    Never deletes the root itself. Safe after erosion-only or render runs:
+    only empties are removed; folders with outputs are kept.
+    """
+    if root is None:
+        root = main_t2vv_dir
+    if not root or not os.path.isdir(root):
+        return 0
+
+    abs_root = os.path.abspath(root)
+    removed = 0
+    # Bottom-up so child empties are cleared before parents are reconsidered.
+    for dirpath, dirnames, filenames in os.walk(abs_root, topdown=False):
+        abs_dir = os.path.abspath(dirpath)
+        if abs_dir == abs_root:
+            continue
+        # Re-check liveliness: walk snapshot may be stale after child removals.
+        try:
+            entries = os.listdir(abs_dir)
+        except OSError:
+            continue
+        if entries:
+            continue
+        try:
+            os.rmdir(abs_dir)
+            removed += 1
+        except OSError as e:
+            print(f"[WARNING] Could not remove empty directory {abs_dir}: {e}")
+
+    if removed:
+        print(f"[INFO] Removed {removed} empty director{'y' if removed == 1 else 'ies'} under {abs_root}.")
+    return removed
+
 
 # Only create directories if this module is being run directly
 if __name__ == "__main__":
     create_directories()
-    # Verify directory structure
-    #for root, dirs, files in os.walk(base_directory):
-    #    for dir in dirs:
-    #        print(os.path.join(root, dir))
-
-

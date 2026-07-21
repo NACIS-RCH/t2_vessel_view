@@ -282,6 +282,7 @@ def _run_render_outputs(requested_panels):
             "Generate displays with, for example:\n"
             f"  t2vv_render_existing --source-dir {out_hint} --panels standard"
         )
+        dir_structure.prune_empty_directories()
         return 0
 
     print(f"[INFO] Requested panels: {', '.join(sorted(requested_panels))}")
@@ -614,6 +615,7 @@ def _run_render_outputs(requested_panels):
         else:
             print("[INFO] Skipping multimodal surgical preset: no FLAIR/T2 inputs or eroded files were available.")
 
+    dir_structure.prune_empty_directories()
     return 0
 
 
@@ -676,8 +678,8 @@ def main():
             f"Reading and writing outputs under: {dir_structure.main_t2vv_dir}"
         )
 
-    # Create directory structure
-    dir_structure.create_directories()
+    # Create directory structure (core + modalities present on the CLI)
+    dir_structure.create_directories(commandline.args)
 
     if render_existing_erosions:
         try:
