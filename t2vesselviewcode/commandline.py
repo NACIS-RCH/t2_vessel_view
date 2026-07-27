@@ -413,138 +413,162 @@ parser.add_argument('--dicom-metadata-source',
 
 ## add flags for save masks or not
 
-args = parser.parse_args()
+# Parsed CLI namespace; set by parse_and_validate(). Remains None until then so
+# importing this module never requires argv or triggers circular path setup.
+args = None
 
-# Early exit: write starter YAML without requiring -d/-i or other pipeline args.
-if getattr(args, "write_panel_config_example", None):
-    import sys
-    from . import panel_config as _panel_config
-    out_path = _panel_config.write_example_config(args.write_panel_config_example)
-    print(f"[INFO] Wrote example panel config: {out_path}")
-    print(
-        "[INFO] Edit overlay paths, then run with "
-        "--panels custom_overlay_trio --panel-config <that file>."
-    )
-    sys.exit(0)
 
-if not args.mri_dir:
-    parser.error('the following arguments are required: -d')
-if not args.t1:
-    parser.error('the following arguments are required: -i')
+def parse_and_validate(argv=None):
+    """Parse CLI arguments, validate them, and store on ``commandline.args``.
 
-if args.user_mask and not args.user_mask_structural:
-    parser.error('-m/--user_mask requires -n/--user_mask_structural.')
+    Must be called explicitly from the main entrypoint (not at import time) so
+    other modules can import ``commandline`` safely before paths are configured.
 
-# Basic CLI validation for overlay parameters
-for overlay_idx in range(1, 5):
-    path_val = getattr(args, f'overlay{overlay_idx}_path', None)
-    name_val = getattr(args, f'overlay{overlay_idx}_name', f'Overlay{overlay_idx}')
-    min_val = getattr(args, f'overlay{overlay_idx}_min', None)
-    max_val = getattr(args, f'overlay{overlay_idx}_max', None)
-    opacity_val = getattr(args, f'overlay{overlay_idx}_opacity', 35)
+    Parameters
+    ----------
+    argv :
+        Optional argument list (defaults to ``sys.argv[1:]`` via argparse).
 
-    if opacity_val is not None and not (0 <= int(opacity_val) <= 100):
-        parser.error(f'--overlay{overlay_idx}-opacity must be between 0 and 100.')
+    Returns
+    -------
+    argparse.Namespace
+        The validated args object (also available as ``commandline.args``).
+    """
+    global args
+    args = parser.parse_args(argv)
 
-    # If user provided one bound, require both so intent is explicit.
-    if path_val and ((min_val is None) ^ (max_val is None)):
-        parser.error(
-            f'--overlay{overlay_idx}-min and --overlay{overlay_idx}-max must be provided together, '
-            f'or both omitted for automatic estimation.'
+    # Early exit: write starter YAML without requiring -d/-i or other pipeline args.
+    if getattr(args, "write_panel_config_example", None):
+        import sys
+        from . import panel_config as _panel_config
+        out_path = _panel_config.write_example_config(args.write_panel_config_example)
+        print(f"[INFO] Wrote example panel config: {out_path}")
+        print(
+            "[INFO] Edit overlay paths, then run with "
+            "--panels custom_overlay_trio --panel-config <that file>."
+        )
+        sys.exit(0)
+
+    if not args.mri_dir:
+        parser.error('the following arguments are required: -d')
+    if not args.t1:
+        parser.error('the following arguments are required: -i')
+
+    if args.user_mask and not args.user_mask_structural:
+        parser.error('-m/--user_mask requires -n/--user_mask_structural.')
+
+    # Basic CLI validation for overlay parameters
+    for overlay_idx in range(1, 5):
+        path_val = getattr(args, f'overlay{overlay_idx}_path', None)
+        name_val = getattr(args, f'overlay{overlay_idx}_name', f'Overlay{overlay_idx}')
+        min_val = getattr(args, f'overlay{overlay_idx}_min', None)
+        max_val = getattr(args, f'overlay{overlay_idx}_max', None)
+        opacity_val = getattr(args, f'overlay{overlay_idx}_opacity', 35)
+
+        if opacity_val is not None and not (0 <= int(opacity_val) <= 100):
+            parser.error(f'--overlay{overlay_idx}-opacity must be between 0 and 100.')
+
+        # If user provided one bound, require both so intent is explicit.
+        if path_val and ((min_val is None) ^ (max_val is None)):
+            parser.error(
+                f'--overlay{overlay_idx}-min and --overlay{overlay_idx}-max must be provided together, '
+                f'or both omitted for automatic estimation.'
+            )
+
+        if path_val and min_val is not None and max_val is not None and float(max_val) <= float(min_val):
+            parser.error(f'--overlay{overlay_idx}-max must be greater than --overlay{overlay_idx}-min.')
+
+        if path_val and name_val and any(ch.isspace() for ch in str(name_val)):
+            parser.error(f'--overlay{overlay_idx}-name please specify a name without spaces.')
+
+    # Resolve requested display panels (aliases + deprecated --panel-preset).
+    # Import here so argparse setup above stays free of package-side effects.
+    from . import panel_registry as _panel_registry
+
+    try:
+        _resolved_panels = _panel_registry.resolve_requested_panels(
+            getattr(args, "panels", None),
+            panel_preset=getattr(args, "panel_preset", None),
+        )
+    except ValueError as e:
+        parser.error(str(e))
+
+    args.resolved_panels = _resolved_panels
+
+    if getattr(args, "panel_preset", None) == "quant_map_mm_panel":
+        print(
+            "[WARNING] --panel-preset is deprecated; prefer "
+            "'--panels quant_map_mm_panel'."
         )
 
-    if path_val and min_val is not None and max_val is not None and float(max_val) <= float(min_val):
-        parser.error(f'--overlay{overlay_idx}-max must be greater than --overlay{overlay_idx}-min.')
+    # Validation for quant_map_mm_panel when that panel was requested
+    if "quant_map_mm_panel" in args.resolved_panels:
+        if not args.flair:
+            parser.error('--panels quant_map_mm_panel requires a FLAIR input via -f.')
+        if not args.overlay1_path or not args.overlay2_path:
+            parser.error(
+                '--panels quant_map_mm_panel requires both --overlay1-path and --overlay2-path.'
+            )
+        has_any_t2 = any([
+            bool(args.t2_3d),
+            bool(args.t2_sag),
+            bool(args.t2_sag_left),
+            bool(args.t2_sag_right),
+            bool(args.t2_cor),
+            bool(args.t2_tra),
+        ])
+        if not has_any_t2:
+            parser.error(
+                '--panels quant_map_mm_panel requires at least one T2 input '
+                '(3D T2 or one/more T2 planes).'
+            )
+        if int(args.qmm_main_erode_depth) < 0:
+            parser.error('--qmm-main-erode-depth must be >= 0.')
+        if args.qmm_angles:
+            # Preserve user order while removing accidental duplicates.
+            args.qmm_angles = list(dict.fromkeys(args.qmm_angles))
 
-    if path_val and name_val and any(ch.isspace() for ch in str(name_val)):
-        parser.error(f'--overlay{overlay_idx}-name please specify a name without spaces.')
+    if "t1_overlay_overview" in args.resolved_panels:
+        if not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
+            parser.error(
+                '--panels t1_overlay_overview requires at least one overlay path '
+                '(--overlay1-path through --overlay4-path).'
+            )
 
-# Resolve requested display panels (aliases + deprecated --panel-preset).
-# Import here so argparse setup above stays free of package-side effects.
-from . import panel_registry as _panel_registry
+    if "custom_overlay_trio" in args.resolved_panels:
+        if not getattr(args, "panel_config", None):
+            parser.error(
+                '--panels custom_overlay_trio requires --panel-config PATH.yaml '
+                '(see examples/custom_overlay_trio.yaml or --write-panel-config-example).'
+            )
+        if not os.path.isfile(args.panel_config):
+            parser.error(f'--panel-config not found: {args.panel_config}')
 
-try:
-    _resolved_panels = _panel_registry.resolve_requested_panels(
-        getattr(args, "panels", None),
-        panel_preset=getattr(args, "panel_preset", None),
-    )
-except ValueError as e:
-    parser.error(str(e))
-
-args.resolved_panels = _resolved_panels
-
-if getattr(args, "panel_preset", None) == "quant_map_mm_panel":
-    print(
-        "[WARNING] --panel-preset is deprecated; prefer "
-        "'--panels quant_map_mm_panel'."
-    )
-
-# Validation for quant_map_mm_panel when that panel was requested
-if "quant_map_mm_panel" in args.resolved_panels:
-    if not args.flair:
-        parser.error('--panels quant_map_mm_panel requires a FLAIR input via -f.')
-    if not args.overlay1_path or not args.overlay2_path:
+    if args.export_overlay_dicom and "t1_overlay_overview" not in args.resolved_panels:
         parser.error(
-            '--panels quant_map_mm_panel requires both --overlay1-path and --overlay2-path.'
-        )
-    has_any_t2 = any([
-        bool(args.t2_3d),
-        bool(args.t2_sag),
-        bool(args.t2_sag_left),
-        bool(args.t2_sag_right),
-        bool(args.t2_cor),
-        bool(args.t2_tra),
-    ])
-    if not has_any_t2:
-        parser.error(
-            '--panels quant_map_mm_panel requires at least one T2 input '
-            '(3D T2 or one/more T2 planes).'
-        )
-    if int(args.qmm_main_erode_depth) < 0:
-        parser.error('--qmm-main-erode-depth must be >= 0.')
-    if args.qmm_angles:
-        # Preserve user order while removing accidental duplicates.
-        args.qmm_angles = list(dict.fromkeys(args.qmm_angles))
-
-if "t1_overlay_overview" in args.resolved_panels:
-    if not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
-        parser.error(
-            '--panels t1_overlay_overview requires at least one overlay path '
-            '(--overlay1-path through --overlay4-path).'
+            '--export-overlay-dicom requires --panels t1_overlay_overview '
+            '(and at least one overlay path).'
         )
 
-if "custom_overlay_trio" in args.resolved_panels:
-    if not getattr(args, "panel_config", None):
-        parser.error(
-            '--panels custom_overlay_trio requires --panel-config PATH.yaml '
-            '(see examples/custom_overlay_trio.yaml or --write-panel-config-example).'
-        )
-    if not os.path.isfile(args.panel_config):
-        parser.error(f'--panel-config not found: {args.panel_config}')
+    if args.export_overlay_dicom and not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
+        parser.error('--export-overlay-dicom requires at least one overlay path (--overlay1-path through --overlay4-path).')
 
-if args.export_overlay_dicom and "t1_overlay_overview" not in args.resolved_panels:
-    parser.error(
-        '--export-overlay-dicom requires --panels t1_overlay_overview '
-        '(and at least one overlay path).'
-    )
+    if args.export_overlay_dicom:
+        if not args.dicom_metadata_source:
+            parser.error('--export-overlay-dicom requires --dicom-metadata-source, please provide a DICOM file or folder.')
+        if not os.path.exists(args.dicom_metadata_source):
+            parser.error(f'--dicom-metadata-source not found: {args.dicom_metadata_source}')
 
-if args.export_overlay_dicom and not any(getattr(args, f'overlay{idx}_path', None) for idx in range(1, 5)):
-    parser.error('--export-overlay-dicom requires at least one overlay path (--overlay1-path through --overlay4-path).')
+    if args.render_existing_erosions:
+        if not args.render_source_dir:
+            parser.error('--render-existing-erosions requires --render-source-dir.')
+        if not os.path.isdir(args.render_source_dir):
+            parser.error(f'--render-source-dir not found or is not a folder: {args.render_source_dir}')
+        if not args.resolved_panels:
+            parser.error(
+                'Render-existing mode requires --panels (for example: '
+                '--panels standard  or  --panels t1_overlay_overview).'
+            )
 
-if args.export_overlay_dicom:
-    if not args.dicom_metadata_source:
-        parser.error('--export-overlay-dicom requires --dicom-metadata-source, please provide a DICOM file or folder.')
-    if not os.path.exists(args.dicom_metadata_source):
-        parser.error(f'--dicom-metadata-source not found: {args.dicom_metadata_source}')
-
-if args.render_existing_erosions:
-    if not args.render_source_dir:
-        parser.error('--render-existing-erosions requires --render-source-dir.')
-    if not os.path.isdir(args.render_source_dir):
-        parser.error(f'--render-source-dir not found or is not a folder: {args.render_source_dir}')
-    if not args.resolved_panels:
-        parser.error(
-            'Render-existing mode requires --panels (for example: '
-            '--panels standard  or  --panels t1_overlay_overview).'
-        )
+    return args
 
