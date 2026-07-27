@@ -8,7 +8,18 @@ import yaml
 
 from . import overlay_colors
 
-ALLOWED_ANGLES = ("left", "right", "anterior", "posterior", "superior", "inferior")
+ALLOWED_ANGLES = (
+    "left",
+    "right",
+    "anterior",
+    "posterior",
+    "superior",
+    "inferior",
+    "surg_left_lat",
+    "surg_right_lat",
+    "surg_left_ato",
+    "surg_right_ato",
+)
 ALLOWED_BASES = ("t1", "t2_cor", "t2_tra", "t2_sag", "t2_3d", "flair")
 MIN_SLOTS = 2
 MAX_SLOTS = 4
@@ -191,6 +202,9 @@ _EMBEDDED_EXAMPLE = """# Custom overlay trio panel config for t2_vessel_view.
 # Edit paths, then:
 #   t2vv_render_existing --source-dir /path/to/T2VesselView \\
 #     --panels custom_overlay_trio --panel-config ./my_trio.yaml
+#
+# Angles: left, right, anterior, posterior, superior, inferior,
+#   surg_left_lat, surg_right_lat, surg_left_ato, surg_right_ato
 
 angles:
   - superior
