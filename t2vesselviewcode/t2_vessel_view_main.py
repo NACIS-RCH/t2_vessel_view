@@ -16,11 +16,13 @@ import glob
 # Check if we're in test mode
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
-# Import package modules using relative imports
+# Import package modules using relative imports.
+# commandline must finish parsing before dir_structure configures paths.
+from . import commandline
 from . import dir_structure
+dir_structure.configure_paths(commandline.args)
 from . import logger
 from . import input_validation
-from . import commandline
 from . import preprocess
 from . import utils
 from . import masking
@@ -741,6 +743,9 @@ def _run_render_outputs(requested_panels):
 
 
 def main():
+    # Ensure path globals are set even if import-time configure was skipped.
+    dir_structure.configure_paths(commandline.args)
+
     if not run_dependency_preflight():
         sys.exit(1)
 
