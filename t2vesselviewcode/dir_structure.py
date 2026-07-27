@@ -1,29 +1,33 @@
 import os
-from . import commandline
 
 ## make directory structure
 
-# Filled by configure_paths() once CLI args are available. May be None briefly
-# during a circular import (commandline still loading).
+# Filled by configure_paths(args). Remains None until main (or a test) configures paths.
 base_directory = None
 
 
-def configure_paths(args=None):
+def configure_paths(args):
     """Set base_directory and all T2VesselView path globals from CLI args.
 
-    Safe to call more than once (idempotent). Prefer calling after commandline
-    has finished parsing so ``commandline.args`` exists.
+    Safe to call more than once (idempotent). Does not import commandline;
+    callers must pass the parsed args object explicitly.
 
     Parameters
     ----------
     args :
-        Parsed CLI namespace. Defaults to ``commandline.args`` when available.
+        Parsed CLI namespace with ``output_dir`` and/or ``mri_dir``.
+
+    Returns
+    -------
+    bool
+        True when paths were configured.
     """
     global base_directory
     if args is None:
-        if not hasattr(commandline, "args"):
-            return False
-        args = commandline.args
+        raise TypeError(
+            "configure_paths(args) requires parsed CLI args; "
+            "call commandline.parse_and_validate() first."
+        )
     base_directory = args.output_dir or args.mri_dir
     if not base_directory:
         raise ValueError(
@@ -156,12 +160,6 @@ def use_existing_t2vesselview_dir(existing_root):
     _set_t2vv_root(existing_root)
 
 
-# Eager init when CLI already finished parsing (normal runs / tests that set argv).
-# If commandline is only partially imported, skip; main will call configure_paths().
-if hasattr(commandline, "args"):
-    configure_paths(commandline.args)
-
-
 def core_directories():
     """Directories always created for a run (modality/panel trees are on demand)."""
     return [
@@ -202,15 +200,16 @@ def modality_directories_for_args(args):
     return dirs
 
 
-def create_directories(args=None):
+def create_directories(args):
     """Create core dirs plus folders for modalities present in args.
 
-    Path globals always exist via _set_t2vv_root; only mkdir is selective.
-    Writers must still use os.makedirs(..., exist_ok=True) before writing so
-    later add-on modality or render_existing steps can create missing folders.
+    Path globals must already exist via configure_paths / _set_t2vv_root;
+    only mkdir is selective. Writers must still use os.makedirs(..., exist_ok=True)
+    before writing so later add-on modality or render_existing steps can create
+    missing folders.
     """
     if args is None:
-        args = commandline.args
+        raise TypeError("create_directories(args) requires parsed CLI args.")
     to_create = list(core_directories()) + list(modality_directories_for_args(args))
     # Preserve order while dropping duplicates.
     seen = set()
@@ -255,8 +254,3 @@ def prune_empty_directories(root=None):
     if removed:
         print(f"[INFO] Removed {removed} empty director{'y' if removed == 1 else 'ies'} under {abs_root}.")
     return removed
-
-
-# Only create directories if this module is being run directly
-if __name__ == "__main__":
-    create_directories()
