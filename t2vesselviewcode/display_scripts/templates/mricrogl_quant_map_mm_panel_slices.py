@@ -8,6 +8,7 @@ WINDOW = __WINDOW__  # type: ignore
 CAMERA_DISTANCE = __CAMERA_DISTANCE__  # type: ignore
 OVERLAYS = __OVERLAYS__  # type: ignore
 MAIN_ERODE_PREFIX = "__MAIN_ERODE_PREFIX__"
+SLICE_ALL_DEPTHS = __SLICE_ALL_DEPTHS__  # type: ignore
 SLICE_Z_START = __SLICE_Z_START__  # type: ignore
 SLICE_Z_END = __SLICE_Z_END__  # type: ignore
 SLICE_H_DIVISOR = __SLICE_H_DIVISOR__  # type: ignore
@@ -158,8 +159,11 @@ for i in IMAGELIST:
     # Overlay erosion snapshots
     _save_erosion_snapshot_for_all_angles('overlay', base)
 
-    # Full slice sweeps only for the selected main erosion depth
-    if MAIN_ERODE_PREFIX and (str(MAIN_ERODE_PREFIX) + "_eroded") in base:
+    # Slice sweeps: either all erosion depths, or only the selected main depth (qmm).
+    run_slices = bool(SLICE_ALL_DEPTHS) or (
+        MAIN_ERODE_PREFIX and (str(MAIN_ERODE_PREFIX) + "_eroded") in base
+    )
+    if run_slices:
         _save_slice_sweep_for_all_angles('overlay', base)
         for ln in overlay_layer_numbers:
             try:
