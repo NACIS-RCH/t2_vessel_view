@@ -112,6 +112,13 @@ t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
   --overlay1-name PET \
   --overlay1-color green \
   --overlay1-min 0 --overlay1-max 5
+
+# Custom multi-base overlay trio (YAML; erosions + slices for all depths — can be slow)
+python -m t2vesselviewcode.t2_vessel_view_main --write-panel-config-example ./my_trio.yaml
+# edit overlay paths in my_trio.yaml, then:
+t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
+  --panels custom_overlay_trio \
+  --panel-config ./my_trio.yaml
 ```
 
 ### One-shot: preprocess and panels in a single command
@@ -149,6 +156,7 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 ## Configuration
 - **MRIcroGL path**: set `T2VV_MRICROGL_PATH` to the executable if not in default location
 - **Environment**: run inside the `t2vv` conda environment
+- **Custom overlay trio**: optional YAML via `--panel-config` (see `examples/custom_overlay_trio.yaml`). Use `--write-panel-config-example` to copy a starter file. This panel renders **all** erosion depths with both erosion snapshots and slice sweeps; left/right slices stop just past midline (same rule as `quant_map_mm_panel`).
 
 ## Troubleshooting
 - MRIcroGL not found: set `T2VV_MRICROGL_PATH`

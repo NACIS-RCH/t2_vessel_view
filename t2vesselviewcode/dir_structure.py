@@ -44,6 +44,9 @@ def _set_t2vv_root(t2vv_root):
     global renders_qmm_dir
     global renders_qmm_raw_dir
     global renders_qmm_stitched_dir
+    global renders_custom_trio_dir
+    global renders_custom_trio_raw_dir
+    global renders_custom_trio_stitched_dir
     global directory_structure
 
     main_t2vv_dir = os.path.abspath(t2vv_root)
@@ -80,6 +83,9 @@ def _set_t2vv_root(t2vv_root):
     renders_qmm_dir = os.path.join(renders_dir, "Quant_map_mm_panel")
     renders_qmm_raw_dir = os.path.join(renders_qmm_dir, "raw")
     renders_qmm_stitched_dir = os.path.join(renders_qmm_dir, "stitched")
+    renders_custom_trio_dir = os.path.join(renders_dir, "Custom_overlay_trio")
+    renders_custom_trio_raw_dir = os.path.join(renders_custom_trio_dir, "raw")
+    renders_custom_trio_stitched_dir = os.path.join(renders_custom_trio_dir, "stitched")
 
     # Full path registry (for reference / tests). Create uses core + modality lists.
     directory_structure = [
