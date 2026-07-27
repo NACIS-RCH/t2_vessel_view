@@ -824,6 +824,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
     mricrogl_path = resolve_mricrogl_executable(mricrogl_path)
 
     # [label, brain_az, brain_el, clip_az, clip_el]
+    # Clip az/el are distinct from brain (camera) az/el.
     all_slice_angles = [
         ["left", 90, 0, 270, 0],
         ["right", 270, 0, 90, 0],
@@ -831,6 +832,10 @@ def render_quant_map_mm_panel_slices_mricrogl(
         ["posterior", 0, -10, 0, -10],
         ["superior", 0, 90, 0, 90],
         ["inferior", 180, -90, 0, -90],
+        ["surg_left_lat", 270, 180, 90, 180],
+        ["surg_right_lat", 90, 180, 270, 180],
+        ["surg_left_ato", 300, 175, 225, 0],
+        ["surg_right_ato", 60, 175, 125, 0],
     ]
     if angles:
         wanted = {str(a).strip().lower() for a in angles}

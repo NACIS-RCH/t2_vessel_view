@@ -57,8 +57,16 @@ def _save_slice_sweep_for_all_angles(tag, base):
         slice_z_end_for_angle = int(SLICE_Z_END)
         # Start from the default full sweep end; SLICE_Z_END is injected from
         # volume_rendering.py and remains in use for non-sagittal panel views.
-        if str(label).lower() in ("left", "right"):
-            # Left/right are sagittal views, so stop just past midline. The 0.52
+        _label = str(label).lower()
+        if _label in (
+            "left",
+            "right",
+            "surg_left_lat",
+            "surg_right_lat",
+            "surg_left_ato",
+            "surg_right_ato",
+        ):
+            # Left/right (and surgical L/R) views stop just past midline. The 0.52
             # fraction is injected from volume_rendering.py and multiplied by
             # SLICE_H_DIVISOR so this adapts if the divisor changes from 100.
             slice_z_end_for_angle = int(round(float(SAGITTAL_SLICE_END_FRACTION) * float(SLICE_H_DIVISOR)))
