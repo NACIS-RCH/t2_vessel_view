@@ -17,10 +17,11 @@ import glob
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
 # Import package modules using relative imports.
-# Do not parse CLI or configure paths here — that runs inside main() after
-# imports have finished (avoids circular-import AttributeError on commandline).
+# Parse CLI before configuring paths; do not parse at commandline import time.
 from . import commandline
+commandline.parse_and_validate()
 from . import dir_structure
+dir_structure.configure_paths(commandline.args)
 from . import logger
 from . import input_validation
 from . import preprocess
@@ -743,8 +744,7 @@ def _run_render_outputs(requested_panels):
 
 
 def main():
-    # Parse CLI and set output paths only after all imports have completed.
-    commandline.parse_and_validate()
+    # Ensure path globals are set even if import-time configure was skipped.
     dir_structure.configure_paths(commandline.args)
 
     if not run_dependency_preflight():
