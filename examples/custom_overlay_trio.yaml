@@ -13,9 +13,6 @@
 # - All erosion depths present for each base are used (can be slow).
 # - left/right (and surg_left_*/surg_right_*) slice sweeps stop just past midline.
 # - opacity is 0–100 (same as MRIcroGL / --overlayN-opacity).
-# - min / max are overlay intensity window values (same as CLI --overlayN-min /
-#   --overlayN-max). Provide both together with max > min. If omitted, values are
-#   auto-estimated from the overlay image (with a warning), same as t2vv_render_existing.
 # - Allowed base values: t1, t2, flair
 # - base: t2 auto-selects the T2 plane per angle (same rules as multimodal/QMM):
 #     left/right + surg_* → sagittal (fallback t2_3d, then t2_tra for L/R)
@@ -38,8 +35,6 @@ slots:
         color: jet
         name: PET
         opacity: 60
-        min: 0
-        max: 10
 
   - base: t2
     overlays:
@@ -47,14 +42,10 @@ slots:
         color: hot
         name: fMRI
         opacity: 50
-        min: 0
-        max: 5
       - path: /data/tract1.nii.gz
         color: green
         name: TractA
         opacity: 80
-        min: 0
-        max: 1
 
   - base: flair
     overlays:
@@ -62,5 +53,3 @@ slots:
         color: electric_blue
         name: OverlayA
         opacity: 50
-        min: 0
-        max: 100
