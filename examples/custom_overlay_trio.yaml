@@ -11,18 +11,14 @@
 # Notes:
 # - Both erosion snapshots and slice sweeps are always generated.
 # - All erosion depths present for each base are used (can be slow).
-# - left/right (and surg_left_*/surg_right_*) slice sweeps stop just past midline.
+# - left/right slice sweeps stop just past midline (same rule as quant_map_mm_panel).
 # - opacity is 0–100 (same as MRIcroGL / --overlayN-opacity).
 # - Allowed base values: t1, t2_cor, t2_tra, t2_sag, t2_3d, flair
-# - Allowed angles: left, right, anterior, posterior, superior, inferior,
-#   surg_left_lat, surg_right_lat, surg_left_ato, surg_right_ato
 # - Use 2–4 slots.
 
 angles:
   - superior
   - left
-  # - surg_left_lat
-  # - surg_right_ato
 
 slots:
   - base: t1
