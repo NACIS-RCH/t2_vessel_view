@@ -8,6 +8,8 @@
 # Notes:
 # - Choose 2 to 4 slots. Repeating a base is allowed.
 # - Bases are t1, t2, or flair.
+# - Overlays are optional per slot. A slot with only "base" displays the
+#   structural image without a colorbar.
 # - base: t2 automatically selects the best available T2 acquisition:
 #     left/right: sagittal, then 3D, then transverse
 #     anterior/posterior: coronal, then 3D
@@ -53,11 +55,5 @@ slots:
         min: 0
         max: 1
 
+  # Structural-only slot: omit "overlays" when none are wanted.
   - base: flair
-    overlays:
-      - path: ./overlay_a.nii.gz
-        color: electric_blue
-        name: OverlayA
-        opacity: 50
-        min: 0
-        max: 100

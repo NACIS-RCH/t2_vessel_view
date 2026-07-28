@@ -122,7 +122,8 @@ t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
 Copy `examples/custom_overlay_trio.yaml` as a starting point. Custom panel
 overlays must already be aligned with the structural images. The YAML supports
 T1, automatically selected T2, and FLAIR bases; cardinal/surgical views; overlay
-colour, opacity and window values; all erosion depths; and slice sweeps.
+colour, opacity and window values; all erosion depths; and slice sweeps. Overlays
+are optional for each slot, so a slot can display only its structural base.
 
 ### One-shot: preprocess and panels in a single command
 ```bash

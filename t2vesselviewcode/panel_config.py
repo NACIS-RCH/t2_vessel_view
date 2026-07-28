@@ -238,7 +238,8 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
     for slot_index, raw_slot in enumerate(raw_slots):
         if not isinstance(raw_slot, dict):
             raise ValueError(
-                f"Slot {slot_index} must be a mapping with 'base' and 'overlays'."
+                f"Slot {slot_index} must be a mapping with a 'base' and "
+                "optional 'overlays'."
             )
         base = str(raw_slot.get("base", "")).strip().lower()
         if base not in ALLOWED_BASES:
@@ -247,10 +248,14 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
                 f"Allowed: {', '.join(ALLOWED_BASES)}."
             )
 
-        raw_overlays = raw_slot.get("overlays")
-        if not isinstance(raw_overlays, list) or not raw_overlays:
+        raw_overlays = raw_slot.get("overlays", [])
+        # YAML parses both an omitted key and an empty ``overlays:`` value as
+        # no overlays. A structural-only slot remains a valid panel column.
+        if raw_overlays is None:
+            raw_overlays = []
+        if not isinstance(raw_overlays, list):
             raise ValueError(
-                f"Slot {slot_index} ({base}) must include at least one overlay."
+                f"Slot {slot_index} ({base}) overlays must be a list when provided."
             )
 
         overlays: List[Dict[str, Any]] = []
@@ -302,11 +307,14 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
             overlays.append(overlay)
 
         overlay_names = [overlay["name"] for overlay in overlays]
+        label = base.upper()
+        if overlay_names:
+            label += " + " + " + ".join(overlay_names)
         slots.append(
             {
                 "index": slot_index,
                 "base": base,
-                "label": f"{base.upper()} + " + " + ".join(overlay_names),
+                "label": label,
                 "overlays": overlays,
             }
         )
