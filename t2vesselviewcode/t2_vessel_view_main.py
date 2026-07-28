@@ -571,19 +571,15 @@ def _run_render_outputs(requested_panels):
                 "Rendering ALL erosion depths with erosions + slices (this can be slow)."
             )
             os.makedirs(dir_structure.renders_custom_trio_raw_dir, exist_ok=True)
-            # Which concrete T2 planes currently have eroded NIfTIs (for base: t2).
-            t2_plane_files = {}
-            for plane in panel_config.T2_PLANE_BASES:
-                files = _collect_eroded_files(
-                    panel_config.base_to_eroded_dir(plane, dir_structure),
-                    panel_config.base_to_glob_pattern(plane),
-                )
-                if files:
-                    t2_plane_files[plane] = files
-            available_t2_planes = list(t2_plane_files.keys())
-
             for slot in slots:
                 base = slot["base"]
+                eroded_dir = panel_config.base_to_eroded_dir(base, dir_structure)
+                pattern = panel_config.base_to_glob_pattern(base)
+                eroded_files = _collect_eroded_files(eroded_dir, pattern)
+                if not eroded_files:
+                    raise ValueError(
+                        f"custom_overlay_trio slot '{base}' has no eroded NIfTIs in {eroded_dir}"
+                    )
                 # Fill missing overlay windows from image stats (same idea as CLI overlays).
                 overlays = []
                 for ov in slot["overlays"]:
@@ -599,60 +595,16 @@ def _run_render_outputs(requested_panels):
                             f"auto window min={ov['min']}, max={ov['max']}."
                         )
                     overlays.append(ov)
-
+                if base == "t1":
+                    win = volume_rendering.compute_series_window(eroded_files, low_pct=2.0, high_pct=90.0)
+                elif base == "flair":
+                    win = volume_rendering.compute_series_window(eroded_files, low_pct=7.5, high_pct=99.99)
+                else:
+                    win = volume_rendering.compute_series_window(eroded_files, low_pct=0.3, high_pct=99.75)
                 slot_outdir = os.path.join(
                     dir_structure.renders_custom_trio_raw_dir,
                     f"{int(slot['index']):02d}_{base}",
                 )
-
-                if base == "t2":
-                    if not available_t2_planes:
-                        raise ValueError(
-                            "custom_overlay_trio slot 't2' needs eroded T2 NIfTIs "
-                            "(T2_Sag, T2_Cor, T2_Tra, and/or T2_3D)."
-                        )
-                    plane_groups = panel_config.group_angles_by_resolved_t2_plane(
-                        angles, available_t2_planes
-                    )
-                    print(
-                        f"[INFO] custom_overlay_trio rendering slot {slot['index']} "
-                        f"(t2 auto-plane, groups={[(p, a) for p, a in plane_groups]}) "
-                        f"-> {slot_outdir}"
-                    )
-                    for plane, plane_angles in plane_groups:
-                        eroded_files = t2_plane_files[plane]
-                        win = volume_rendering.compute_series_window(
-                            eroded_files, low_pct=0.3, high_pct=99.75
-                        )
-                        print(
-                            f"[INFO] custom_overlay_trio t2/{plane}: "
-                            f"{len(eroded_files)} eroded file(s), angles={plane_angles}"
-                        )
-                        volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
-                            eroded_files,
-                            slot_outdir,
-                            overlays=overlays,
-                            window=win,
-                            main_erode_prefix="",
-                            mricrogl_path=mricrogl_exec,
-                            angles=plane_angles,
-                            slice_all_depths=True,
-                            timeout_s=3600,
-                        )
-                    continue
-
-                eroded_dir = panel_config.base_to_eroded_dir(base, dir_structure)
-                pattern = panel_config.base_to_glob_pattern(base)
-                eroded_files = _collect_eroded_files(eroded_dir, pattern)
-                if not eroded_files:
-                    raise ValueError(
-                        f"custom_overlay_trio slot '{base}' has no eroded NIfTIs in {eroded_dir}"
-                    )
-                if base == "t1":
-                    win = volume_rendering.compute_series_window(eroded_files, low_pct=2.0, high_pct=90.0)
-                else:
-                    # flair
-                    win = volume_rendering.compute_series_window(eroded_files, low_pct=7.5, high_pct=99.99)
                 print(
                     f"[INFO] custom_overlay_trio rendering slot {slot['index']} "
                     f"({base}, {len(eroded_files)} eroded file(s)) -> {slot_outdir}"

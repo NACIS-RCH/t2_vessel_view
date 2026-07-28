@@ -13,11 +13,7 @@
 # - All erosion depths present for each base are used (can be slow).
 # - left/right (and surg_left_*/surg_right_*) slice sweeps stop just past midline.
 # - opacity is 0–100 (same as MRIcroGL / --overlayN-opacity).
-# - Allowed base values: t1, t2, flair
-# - base: t2 auto-selects the T2 plane per angle (same rules as multimodal/QMM):
-#     left/right + surg_* → sagittal (fallback t2_3d, then t2_tra for L/R)
-#     anterior/posterior → coronal (fallback t2_3d)
-#     superior/inferior → transverse (fallback t2_3d)
+# - Allowed base values: t1, t2_cor, t2_tra, t2_sag, t2_3d, flair
 # - Allowed angles: left, right, anterior, posterior, superior, inferior,
 #   surg_left_lat, surg_right_lat, surg_left_ato, surg_right_ato
 # - Use 2–4 slots.
@@ -36,7 +32,7 @@ slots:
         name: PET
         opacity: 60
 
-  - base: t2
+  - base: t2_cor
     overlays:
       - path: /data/fmri.nii.gz
         color: hot

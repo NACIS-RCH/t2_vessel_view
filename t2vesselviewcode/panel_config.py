@@ -2,7 +2,7 @@
 
 import os
 import shutil
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 import yaml
 
@@ -20,10 +20,7 @@ ALLOWED_ANGLES = (
     "surg_left_ato",
     "surg_right_ato",
 )
-# YAML bases: t2 auto-picks sag/cor/tra/3d per angle (same rules as multimodal/QMM panels).
-ALLOWED_BASES = ("t1", "t2", "flair")
-# Concrete T2 planes used internally by the angle resolver (not YAML bases).
-T2_PLANE_BASES = ("t2_sag", "t2_cor", "t2_tra", "t2_3d")
+ALLOWED_BASES = ("t1", "t2_cor", "t2_tra", "t2_sag", "t2_3d", "flair")
 MIN_SLOTS = 2
 MAX_SLOTS = 4
 
@@ -65,95 +62,6 @@ def opacity_to_mricrogl(opacity: Any, default: int = 35) -> int:
     if not (0.0 <= val <= 100.0):
         raise ValueError(f"Opacity out of range (use 0–100, same as MRIcroGL): {opacity}")
     return int(round(val))
-
-
-def preferred_t2_plane_for_angle(angle: str) -> str:
-    """Return preferred T2 plane key for a viewing angle (package multimodal/QMM rules).
-
-    left/right and surgical views → sagittal;
-    anterior/posterior → coronal;
-    superior/inferior → transverse.
-    """
-    key = str(angle).strip().lower()
-    if key in (
-        "left",
-        "right",
-        "surg_left_lat",
-        "surg_right_lat",
-        "surg_left_ato",
-        "surg_right_ato",
-    ):
-        return "t2_sag"
-    if key in ("anterior", "posterior"):
-        return "t2_cor"
-    if key in ("superior", "inferior"):
-        return "t2_tra"
-    raise ValueError(f"Unknown angle for T2 plane selection: {angle}")
-
-
-def t2_fallback_planes_for_angle(angle: str) -> List[str]:
-    """Ordered T2 plane candidates for an angle: preferred, then t2_3d, then left/right t2_tra."""
-    preferred = preferred_t2_plane_for_angle(angle)
-    ordered: List[str] = [preferred]
-    if "t2_3d" not in ordered:
-        ordered.append("t2_3d")
-    key = str(angle).strip().lower()
-    # Match quant_map_mm left/right tertiary fallback when sag and 3d are missing.
-    if key in ("left", "right") and "t2_tra" not in ordered:
-        ordered.append("t2_tra")
-    return ordered
-
-
-def resolve_t2_plane_for_angle(
-    angle: str,
-    available_planes: Sequence[str],
-) -> str:
-    """Pick the first available T2 plane for an angle from the fallback chain.
-
-    Parameters
-    ----------
-    angle :
-        Viewing angle label.
-    available_planes :
-        Plane keys that currently have eroded NIfTIs (e.g. ``t2_sag``, ``t2_3d``).
-
-    Returns
-    -------
-    str
-        Chosen plane key.
-
-    Raises
-    ------
-    ValueError
-        If no candidate plane is available.
-    """
-    available = {str(p).strip().lower() for p in available_planes}
-    for plane in t2_fallback_planes_for_angle(angle):
-        if plane in available:
-            return plane
-    raise ValueError(
-        f"No T2 eroded data for angle '{angle}'. Tried: "
-        f"{', '.join(t2_fallback_planes_for_angle(angle))}."
-    )
-
-
-def group_angles_by_resolved_t2_plane(
-    angles: Sequence[str],
-    available_planes: Sequence[str],
-) -> List[Tuple[str, List[str]]]:
-    """Group angles by the resolved T2 plane, preserving first-seen plane order.
-
-    Returns list of (plane_key, angles_for_that_plane).
-    """
-    groups: Dict[str, List[str]] = {}
-    order: List[str] = []
-    for ang in angles:
-        plane = resolve_t2_plane_for_angle(ang, available_planes)
-        if plane not in groups:
-            groups[plane] = []
-            order.append(plane)
-        groups[plane].append(str(ang).strip().lower())
-    return [(plane, groups[plane]) for plane in order]
 
 
 def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
@@ -204,8 +112,7 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
         if base not in ALLOWED_BASES:
             raise ValueError(
                 f"Slot {idx} has unknown base '{slot.get('base')}'. "
-                f"Allowed: {', '.join(ALLOWED_BASES)}. "
-                "Use base: t2 to auto-select sag/cor/tra/3d per angle."
+                f"Allowed: {', '.join(ALLOWED_BASES)}."
             )
         overlays_raw = slot.get("overlays") or []
         if not isinstance(overlays_raw, list) or not overlays_raw:
@@ -263,11 +170,7 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
 
 
 def base_to_eroded_dir(base: str, dir_structure_module) -> str:
-    """Map a concrete modality key to its Eroded_nifti directory.
-
-    ``base`` must be ``t1``, ``flair``, or a concrete T2 plane (``t2_sag``, …).
-    Use ``resolve_t2_plane_for_angle`` / ``group_angles_by_resolved_t2_plane`` for YAML ``t2``.
-    """
+    """Map a YAML base name to the corresponding Eroded_nifti directory."""
     mapping = {
         "t1": dir_structure_module.eroded_nifti_t1_dir,
         "t2_cor": dir_structure_module.eroded_nifti_t2_cor_dir,
@@ -276,18 +179,13 @@ def base_to_eroded_dir(base: str, dir_structure_module) -> str:
         "t2_3d": dir_structure_module.eroded_nifti_t2_3d_dir,
         "flair": dir_structure_module.eroded_nifti_flair_dir,
     }
-    if base == "t2":
-        raise ValueError(
-            "base 't2' is angle-dependent; resolve a concrete plane with "
-            "resolve_t2_plane_for_angle / group_angles_by_resolved_t2_plane."
-        )
     if base not in mapping:
         raise ValueError(f"Unknown base: {base}")
     return mapping[base]
 
 
 def base_to_glob_pattern(base: str) -> str:
-    """Return glob pattern for eroded NIfTIs for a concrete modality key."""
+    """Return glob pattern for eroded NIfTIs for a base modality."""
     patterns = {
         "t1": "*eroded*t1*nii.gz",
         "t2_cor": "*eroded*t2_cor*nii.gz",
@@ -296,12 +194,6 @@ def base_to_glob_pattern(base: str) -> str:
         "t2_3d": "*eroded*t2_3d*nii.gz",
         "flair": "*eroded*flair*nii.gz",
     }
-    if base == "t2":
-        raise ValueError(
-            "base 't2' is angle-dependent; use a concrete plane key for globs."
-        )
-    if base not in patterns:
-        raise ValueError(f"Unknown base: {base}")
     return patterns[base]
 
 
@@ -313,8 +205,6 @@ _EMBEDDED_EXAMPLE = """# Custom overlay trio panel config for t2_vessel_view.
 #
 # Angles: left, right, anterior, posterior, superior, inferior,
 #   surg_left_lat, surg_right_lat, surg_left_ato, surg_right_ato
-# Bases: t1, t2, flair
-#   t2 auto-selects plane per angle (sag L/R/surg, cor A/P, tra S/I; fallback t2_3d).
 
 angles:
   - superior
@@ -328,7 +218,7 @@ slots:
         name: PET
         opacity: 60
 
-  - base: t2
+  - base: t2_cor
     overlays:
       - path: /data/fmri.nii.gz
         color: hot
