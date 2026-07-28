@@ -3,35 +3,10 @@ from . import commandline
 
 ## make directory structure
 
-# Filled by configure_paths() once CLI args are available. May be None briefly
-# during a circular import (commandline still loading).
-base_directory = None
 
-
-def configure_paths(args=None):
-    """Set base_directory and all T2VesselView path globals from CLI args.
-
-    Safe to call more than once (idempotent). Prefer calling after commandline
-    has finished parsing so ``commandline.args`` exists.
-
-    Parameters
-    ----------
-    args :
-        Parsed CLI namespace. Defaults to ``commandline.args`` when available.
-    """
-    global base_directory
-    if args is None:
-        if not hasattr(commandline, "args"):
-            return False
-        args = commandline.args
-    base_directory = args.output_dir or args.mri_dir
-    if not base_directory:
-        raise ValueError(
-            "Cannot configure output paths: need -d/--mri_dir or -o/--output_dir."
-        )
-    _set_t2vv_root(os.path.join(base_directory, "T2VesselView"))
-    return True
-
+## base directory is set from command line arguments: output_dir if provided, otherwise mri_dir
+base_directory = commandline.args.output_dir or commandline.args.mri_dir
+## define directory structure. add option to change main directory name or add suffix
 
 def _set_t2vv_root(t2vv_root):
     """Set all package output paths from a concrete T2VesselView-style root folder."""
@@ -156,10 +131,7 @@ def use_existing_t2vesselview_dir(existing_root):
     _set_t2vv_root(existing_root)
 
 
-# Eager init when CLI already finished parsing (normal runs / tests that set argv).
-# If commandline is only partially imported, skip; main will call configure_paths().
-if hasattr(commandline, "args"):
-    configure_paths(commandline.args)
+_set_t2vv_root(os.path.join(base_directory, "T2VesselView"))
 
 
 def core_directories():
