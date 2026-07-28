@@ -1,0 +1,63 @@
+# Custom overlay panel for t2_vessel_view.
+#
+# Run from an existing T2VesselView output:
+#   t2vv_render_existing --source-dir /path/to/T2VesselView \
+#     --panels custom_overlay_trio \
+#     --panel-config /path/to/custom_overlay_trio.yaml
+#
+# Notes:
+# - Choose 2 to 4 slots. Repeating a base is allowed.
+# - Bases are t1, t2, or flair.
+# - base: t2 automatically selects the best available T2 acquisition:
+#     left/right: sagittal, then 3D, then transverse
+#     anterior/posterior: coronal, then 3D
+#     superior/inferior: transverse, then 3D
+#     surgical views: sagittal, then 3D
+# - Overlay images must already be aligned with the structural images.
+# - Relative overlay paths are resolved relative to this YAML file.
+# - opacity is an MRIcroGL integer from 0 to 100.
+# - min and max are optional overlay window values. Provide both together with
+#   max greater than min. If omitted, they are estimated with a warning.
+# - All erosion depths and slice sweeps are rendered.
+
+angles:
+  - superior
+  - left
+  # - surg_left_lat
+  # - surg_right_lat
+  # - surg_left_ato
+  # - surg_right_ato
+
+slots:
+  - base: t1
+    overlays:
+      - path: ./pet.nii.gz
+        color: jet
+        name: PET
+        opacity: 60
+        min: 0
+        max: 10
+
+  - base: t2
+    overlays:
+      - path: ./fmri.nii.gz
+        color: hot
+        name: fMRI
+        opacity: 50
+        min: 0
+        max: 5
+      - path: ./tract.nii.gz
+        color: green
+        name: Tract
+        opacity: 80
+        min: 0
+        max: 1
+
+  - base: flair
+    overlays:
+      - path: ./overlay_a.nii.gz
+        color: electric_blue
+        name: OverlayA
+        opacity: 50
+        min: 0
+        max: 100
