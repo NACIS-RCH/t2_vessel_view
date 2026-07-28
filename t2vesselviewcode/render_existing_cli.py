@@ -224,7 +224,9 @@ def main(argv=None):
             "  t2vv_render_existing --source-dir /out --panels t1_overlay_overview "
             "--overlay1-path PET.nii.gz --overlay1-color green\n"
             "  t2vv_render_existing --source-dir /out --panels quant_map_mm_panel "
-            "--overlay1-path CBF.nii.gz --overlay2-path ATT.nii.gz"
+            "--overlay1-path CBF.nii.gz --overlay2-path ATT.nii.gz\n"
+            "  t2vv_render_existing --source-dir /out "
+            "--panels custom_overlay_trio --panel-config ./custom_panel.yaml"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

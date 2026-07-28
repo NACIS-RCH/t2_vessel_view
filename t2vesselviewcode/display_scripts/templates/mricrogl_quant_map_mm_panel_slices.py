@@ -12,6 +12,7 @@ SLICE_Z_START = __SLICE_Z_START__  # type: ignore
 SLICE_Z_END = __SLICE_Z_END__  # type: ignore
 SLICE_H_DIVISOR = __SLICE_H_DIVISOR__  # type: ignore
 SAGITTAL_SLICE_END_FRACTION = __SAGITTAL_SLICE_END_FRACTION__  # type: ignore
+SLICE_ALL_DEPTHS = __SLICE_ALL_DEPTHS__  # type: ignore
 
 # [label, brain_az, brain_el, clip_az, clip_el]
 ANGLES = __SLICE_ANGLES__  # type: ignore
@@ -56,7 +57,14 @@ def _save_slice_sweep_for_all_angles(tag, base):
         slice_z_end_for_angle = int(SLICE_Z_END)
         # Start from the default full sweep end; SLICE_Z_END is injected from
         # volume_rendering.py and remains in use for non-sagittal panel views.
-        if str(label).lower() in ("left", "right"):
+        if str(label).lower() in (
+            "left",
+            "right",
+            "surg_left_lat",
+            "surg_right_lat",
+            "surg_left_ato",
+            "surg_right_ato",
+        ):
             # Left/right are sagittal views, so stop just past midline. The 0.52
             # fraction is injected from volume_rendering.py and multiplied by
             # SLICE_H_DIVISOR so this adapts if the divisor changes from 100.
@@ -158,8 +166,10 @@ for i in IMAGELIST:
     # Overlay erosion snapshots
     _save_erosion_snapshot_for_all_angles('overlay', base)
 
-    # Full slice sweeps only for the selected main erosion depth
-    if MAIN_ERODE_PREFIX and (str(MAIN_ERODE_PREFIX) + "_eroded") in base:
+    # QMM sweeps only its selected depth; custom panels can sweep all depths.
+    if bool(SLICE_ALL_DEPTHS) or (
+        MAIN_ERODE_PREFIX and (str(MAIN_ERODE_PREFIX) + "_eroded") in base
+    ):
         _save_slice_sweep_for_all_angles('overlay', base)
         for ln in overlay_layer_numbers:
             try:

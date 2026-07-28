@@ -1513,3 +1513,242 @@ def run_preset_quant_map_mm_panel(
                 pass
 
     export_pptx_from_folder(combined_for_pptx, pptx_basename=pptx_name)
+
+
+def _build_erode_and_slice_map(paths: List[str]) -> Dict[str, str]:
+    """Map ``erosion depth:slice number`` to all-depth slice screenshots."""
+    mapped: Dict[str, str] = {}
+    for path in sorted(paths):
+        basename = os.path.basename(path)
+        slice_match = re.search(r"-(\d{3})-", basename)
+        erode_match = re.search(r"(\d+)_eroded", basename)
+        if not slice_match or not erode_match:
+            continue
+        key = (
+            f"{str(erode_match.group(1)).zfill(3)}:"
+            f"{str(slice_match.group(1)).zfill(3)}"
+        )
+        if key not in mapped:
+            mapped[key] = path
+    return mapped
+
+
+def _sort_erode_and_slice_keys(keys: Set[str]) -> List[str]:
+    """Sort composite ``erosion:slice`` keys numerically."""
+    return sorted(
+        keys,
+        key=lambda key: tuple(int(part) for part in key.split(":", 1)),
+    )
+
+
+def _common_erode_and_slice_keys(
+    slice_maps: List[Dict[str, str]],
+) -> List[str]:
+    """Return ordered all-depth slice keys shared across every slot."""
+    if not slice_maps:
+        return []
+    common = set(slice_maps[0].keys())
+    for slice_map in slice_maps[1:]:
+        common &= set(slice_map.keys())
+    return _sort_erode_and_slice_keys(common)
+
+
+def run_preset_custom_overlay_trio(
+    raw_root: str,
+    stitched_root: str,
+    slots: List[Dict],
+    angles: List[str],
+    add_orientation_labels: bool = True,
+    background_rgb: Optional[List[int]] = None,
+    threshold: int = 2,
+    pptx_name: str = "custom_overlay_trio",
+) -> None:
+    """Stitch custom overlay slots into one-row erosion and slice panels.
+
+    For each angle, erosion panels are appended first, followed by all-depth
+    slice panels. Only erosion/slice keys shared by every configured slot are
+    stitched, ensuring columns always describe the same depth and clip position.
+    """
+    if background_rgb is None:
+        background_rgb = [0, 0, 0]
+    if not slots:
+        raise ValueError("custom_overlay_trio requires at least one slot.")
+
+    by_angle_root = os.path.join(stitched_root, "by_angle")
+    combined_root = os.path.join(stitched_root, "_combined_for_pptx")
+    _ensure_dir(by_angle_root)
+    _ensure_dir(combined_root)
+
+    overlay_specs = [
+        overlay
+        for slot in slots
+        for overlay in (slot.get("overlays") or [])
+        if isinstance(overlay, dict)
+    ]
+    slot_dirs = [
+        os.path.join(
+            raw_root,
+            f"{int(slot['index']):02d}_{slot['base']}",
+        )
+        for slot in slots
+    ]
+
+    from shutil import copyfile
+
+    slide_index = 0
+    for angle in angles:
+        angle_root = os.path.join(by_angle_root, angle)
+
+        # Erosion snapshots: one screenshot per erosion depth and slot.
+        erosion_dirs = [
+            os.path.join(slot_dir, f"{angle}_erosion_overlay")
+            for slot_dir in slot_dirs
+        ]
+        if all(os.path.isdir(path) for path in erosion_dirs):
+            erosion_maps = [
+                _build_prefix_map(_list_pngs(path))
+                for path in erosion_dirs
+            ]
+            common_erosions = _common_prefixes_across_maps(erosion_maps)
+            all_erosions: Set[str] = set()
+            for erosion_map in erosion_maps:
+                all_erosions.update(erosion_map.keys())
+            _log_skipped_prefixes(
+                f"custom_overlay_trio erosions ({angle})",
+                all_erosions,
+                common_erosions,
+            )
+            if common_erosions:
+                annotated_lists = []
+                for slot, erosion_map in zip(slots, erosion_maps):
+                    annotated_lists.append(
+                        _prepare_qmm_annotated_series(
+                            erosion_map,
+                            common_erosions,
+                            os.path.join(
+                                angle_root,
+                                "erosions_annotated",
+                                f"{int(slot['index']):02d}_{slot['base']}",
+                            ),
+                            angle,
+                            slot.get("label", slot["base"]),
+                            add_orientation_labels,
+                            background_rgb,
+                            threshold,
+                        )
+                    )
+                erosion_output = os.path.join(
+                    angle_root,
+                    "erosions_stitched",
+                )
+                concat_one_row(
+                    len(common_erosions),
+                    annotated_lists,
+                    erosion_output,
+                )
+                annotate_overlay_colorbar_series(
+                    erosion_output,
+                    overlay_specs,
+                )
+                for path in sorted(
+                    glob.glob(os.path.join(erosion_output, "concat_*.png"))
+                ):
+                    copyfile(
+                        path,
+                        os.path.join(
+                            combined_root,
+                            f"concat_{slide_index:05d}.png",
+                        ),
+                    )
+                    slide_index += 1
+            else:
+                print(
+                    f"[WARNING] custom_overlay_trio: no shared erosion "
+                    f"depths for angle '{angle}'."
+                )
+        else:
+            print(
+                f"[WARNING] custom_overlay_trio: missing erosion folder(s) "
+                f"for angle '{angle}'."
+            )
+
+        # Slice sweeps: key by erosion depth and clip slice to avoid collisions.
+        slice_dirs = [
+            os.path.join(slot_dir, f"{angle}_slices_overlay")
+            for slot_dir in slot_dirs
+        ]
+        if all(os.path.isdir(path) for path in slice_dirs):
+            slice_maps = [
+                _build_erode_and_slice_map(_list_pngs(path))
+                for path in slice_dirs
+            ]
+            common_slices = _common_erode_and_slice_keys(slice_maps)
+            all_slices: Set[str] = set()
+            for slice_map in slice_maps:
+                all_slices.update(slice_map.keys())
+            skipped_slices = _sort_erode_and_slice_keys(
+                all_slices - set(common_slices)
+            )
+            if skipped_slices:
+                print(
+                    f"[INFO] custom_overlay_trio slices ({angle}): skipped "
+                    f"keys missing in one or more slots: "
+                    f"{', '.join(skipped_slices)}"
+                )
+            if common_slices:
+                annotated_lists = []
+                for slot, slice_map in zip(slots, slice_maps):
+                    annotated_lists.append(
+                        _prepare_qmm_annotated_series(
+                            slice_map,
+                            common_slices,
+                            os.path.join(
+                                angle_root,
+                                "slices_annotated",
+                                f"{int(slot['index']):02d}_{slot['base']}",
+                            ),
+                            angle,
+                            slot.get("label", slot["base"]),
+                            add_orientation_labels,
+                            background_rgb,
+                            threshold,
+                        )
+                    )
+                slice_output = os.path.join(angle_root, "slices_stitched")
+                concat_one_row(
+                    len(common_slices),
+                    annotated_lists,
+                    slice_output,
+                )
+                annotate_overlay_colorbar_series(
+                    slice_output,
+                    overlay_specs,
+                )
+                for path in sorted(
+                    glob.glob(os.path.join(slice_output, "concat_*.png"))
+                ):
+                    copyfile(
+                        path,
+                        os.path.join(
+                            combined_root,
+                            f"concat_{slide_index:05d}.png",
+                        ),
+                    )
+                    slide_index += 1
+            else:
+                print(
+                    f"[WARNING] custom_overlay_trio: no shared slice keys "
+                    f"for angle '{angle}'."
+                )
+        else:
+            print(
+                f"[WARNING] custom_overlay_trio: missing slice folder(s) "
+                f"for angle '{angle}'."
+            )
+
+    if slide_index == 0:
+        raise ValueError(
+            "custom_overlay_trio produced no stitched panels; check raw "
+            "MRIcroGL output folders and shared erosion depths."
+        )
+    export_pptx_from_folder(combined_root, pptx_basename=pptx_name)
