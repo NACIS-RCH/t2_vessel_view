@@ -236,28 +236,16 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
             opacity_val = opacity_to_mricrogl(ov.get("opacity", 35))
             min_val = ov.get("min")
             max_val = ov.get("max")
-            # Match CLI: min and max must be provided together, with max > min.
-            if (min_val is None) != (max_val is None):
-                raise ValueError(
-                    f"Slot {idx} overlay {oidx} ({name_val}): min and max must be "
-                    "provided together (same as --overlayN-min / --overlayN-max)."
-                )
             spec: Dict[str, Any] = {
                 "path": ov_path,
                 "name": name_val,
                 "color": str(color_val),
                 "opacity": int(opacity_val),
             }
-            if min_val is not None and max_val is not None:
-                min_f = float(min_val)
-                max_f = float(max_val)
-                if not (max_f > min_f):
-                    raise ValueError(
-                        f"Slot {idx} overlay {oidx} ({name_val}): max must be "
-                        f"greater than min (got min={min_f}, max={max_f})."
-                    )
-                spec["min"] = min_f
-                spec["max"] = max_f
+            if min_val is not None:
+                spec["min"] = float(min_val)
+            if max_val is not None:
+                spec["max"] = float(max_val)
             overlays.append(spec)
 
         overlay_names = [o["name"] for o in overlays]
@@ -327,8 +315,6 @@ _EMBEDDED_EXAMPLE = """# Custom overlay trio panel config for t2_vessel_view.
 #   surg_left_lat, surg_right_lat, surg_left_ato, surg_right_ato
 # Bases: t1, t2, flair
 #   t2 auto-selects plane per angle (sag L/R/surg, cor A/P, tra S/I; fallback t2_3d).
-# Overlay min/max: same as --overlayN-min / --overlayN-max (provide both; max > min).
-# If omitted, auto-estimated with a warning.
 
 angles:
   - superior
@@ -341,8 +327,6 @@ slots:
         color: jet
         name: PET
         opacity: 60
-        min: 0
-        max: 10
 
   - base: t2
     overlays:
@@ -350,14 +334,10 @@ slots:
         color: hot
         name: fMRI
         opacity: 50
-        min: 0
-        max: 5
       - path: /data/tract1.nii.gz
         color: green
         name: TractA
         opacity: 80
-        min: 0
-        max: 1
 
   - base: flair
     overlays:
@@ -365,6 +345,4 @@ slots:
         color: electric_blue
         name: OverlayA
         opacity: 50
-        min: 0
-        max: 100
 """
