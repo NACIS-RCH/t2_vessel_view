@@ -17,9 +17,8 @@ import glob
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
 # Import package modules using relative imports.
-# Parse CLI before configuring paths; do not parse at commandline import time.
+# commandline must finish parsing before dir_structure configures paths.
 from . import commandline
-commandline.parse_and_validate()
 from . import dir_structure
 dir_structure.configure_paths(commandline.args)
 from . import logger
