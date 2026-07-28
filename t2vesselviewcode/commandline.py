@@ -9,7 +9,7 @@ parser.add_argument('-d',
             type=str, 
             action='store', 
             help='The path to the directory where the input MRI images are', 
-            required=False, 
+            required=True, 
             dest='mri_dir')
 
 parser.add_argument('-o', 
@@ -24,7 +24,7 @@ parser.add_argument('-i',
             type=str, 
             action='store', 
             help='Required T1 or similar main image that other images will be registered to.',
-            required=False,
+            required=True,
             dest='t1')
 
 parser.add_argument('-f', 
@@ -303,7 +303,6 @@ parser.add_argument('--panels',
                 'multimodal_overview',
                 'multimodal_overview_other_angles',
                 'quant_map_mm_panel',
-                'custom_overlay_trio',
                 'standard',
                 'all',
             ],
@@ -312,34 +311,12 @@ parser.add_argument('--panels',
             help=(
                 'Display panels to generate after erosion (default: none). '
                 'IDs: t1_overview, t1_overlay_overview, t2_overview, multimodal_overview, '
-                'multimodal_overview_other_angles, quant_map_mm_panel, custom_overlay_trio. '
-                'Aliases: standard (structural T1/T2/multimodal), all (excludes custom_overlay_trio). '
-                'custom_overlay_trio requires --panel-config. '
+                'multimodal_overview_other_angles, quant_map_mm_panel. '
+                'Aliases: standard (structural T1/T2/multimodal), all. '
                 'Omit --panels on the main command for preprocess/erode only; '
                 'use t2vv_render_existing --panels ... to generate displays later.'
             ),
             dest='panels')
-
-parser.add_argument('--panel-config',
-            metavar='panel_config',
-            type=str,
-            action='store',
-            help=(
-                'YAML config for --panels custom_overlay_trio '
-                '(angles, slots with base + per-slot overlays). '
-                'See examples/custom_overlay_trio.yaml.'
-            ),
-            dest='panel_config')
-
-parser.add_argument('--write-panel-config-example',
-            metavar='output_yaml',
-            type=str,
-            action='store',
-            help=(
-                'Write a starter custom_overlay_trio YAML to this path and exit. '
-                'Does not require -d/-i.'
-            ),
-            dest='write_panel_config_example')
 
 parser.add_argument('--panel-preset',
             metavar='panel_preset',
@@ -414,23 +391,6 @@ parser.add_argument('--dicom-metadata-source',
 ## add flags for save masks or not
 
 args = parser.parse_args()
-
-# Early exit: write starter YAML without requiring -d/-i or other pipeline args.
-if getattr(args, "write_panel_config_example", None):
-    import sys
-    from . import panel_config as _panel_config
-    out_path = _panel_config.write_example_config(args.write_panel_config_example)
-    print(f"[INFO] Wrote example panel config: {out_path}")
-    print(
-        "[INFO] Edit overlay paths, then run with "
-        "--panels custom_overlay_trio --panel-config <that file>."
-    )
-    sys.exit(0)
-
-if not args.mri_dir:
-    parser.error('the following arguments are required: -d')
-if not args.t1:
-    parser.error('the following arguments are required: -i')
 
 if args.user_mask and not args.user_mask_structural:
     parser.error('-m/--user_mask requires -n/--user_mask_structural.')
@@ -512,15 +472,6 @@ if "t1_overlay_overview" in args.resolved_panels:
             '--panels t1_overlay_overview requires at least one overlay path '
             '(--overlay1-path through --overlay4-path).'
         )
-
-if "custom_overlay_trio" in args.resolved_panels:
-    if not getattr(args, "panel_config", None):
-        parser.error(
-            '--panels custom_overlay_trio requires --panel-config PATH.yaml '
-            '(see examples/custom_overlay_trio.yaml or --write-panel-config-example).'
-        )
-    if not os.path.isfile(args.panel_config):
-        parser.error(f'--panel-config not found: {args.panel_config}')
 
 if args.export_overlay_dicom and "t1_overlay_overview" not in args.resolved_panels:
     parser.error(

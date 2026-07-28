@@ -797,20 +797,8 @@ def render_quant_map_mm_panel_slices_mricrogl(
     slice_z_end=95,
     slice_h_divisor=100.0,
     sagittal_slice_end_fraction=0.52,
-    angles=None,
-    slice_all_depths=False,
-    timeout_s=600,
 ):
-    """Render raw slice and erosion screenshots for quant_map_mm_panel workflow.
-
-    Parameters
-    ----------
-    angles : list of str, optional
-        Subset of angle labels to render. Default: all six standard angles.
-    slice_all_depths : bool
-        If True, run slice sweeps for every eroded NIfTI (custom_overlay_trio).
-        If False (default), only the main_erode_prefix depth gets slices (qmm).
-    """
+    """Render raw slice and erosion screenshots for quant_map_mm_panel workflow."""
     if not nifti_paths:
         return
 
@@ -824,7 +812,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
     mricrogl_path = resolve_mricrogl_executable(mricrogl_path)
 
     # [label, brain_az, brain_el, clip_az, clip_el]
-    all_slice_angles = [
+    slice_angles = [
         ["left", 90, 0, 270, 0],
         ["right", 270, 0, 90, 0],
         ["anterior", 180, 0, 180, 0],
@@ -832,13 +820,6 @@ def render_quant_map_mm_panel_slices_mricrogl(
         ["superior", 0, 90, 0, 90],
         ["inferior", 180, -90, 0, -90],
     ]
-    if angles:
-        wanted = {str(a).strip().lower() for a in angles}
-        slice_angles = [row for row in all_slice_angles if row[0] in wanted]
-        if not slice_angles:
-            raise ValueError(f"No valid slice angles selected from: {angles}")
-    else:
-        slice_angles = all_slice_angles
 
     tmp_root = tempfile.mkdtemp(prefix='t2vv_mricrogl_qmm_')
     tmp_imgs = []
@@ -869,8 +850,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
         script_text = script_text.replace('__WINDOW__', window_literal)
         script_text = script_text.replace('__CAMERA_DISTANCE__', camera_literal)
         script_text = script_text.replace('__OVERLAYS__', overlays_literal)
-        script_text = script_text.replace('__MAIN_ERODE_PREFIX__', str(main_erode_prefix or ""))
-        script_text = script_text.replace('__SLICE_ALL_DEPTHS__', "True" if slice_all_depths else "False")
+        script_text = script_text.replace('__MAIN_ERODE_PREFIX__', str(main_erode_prefix))
         script_text = script_text.replace('__SLICE_Z_START__', str(int(slice_z_start)))
         script_text = script_text.replace('__SLICE_Z_END__', str(int(slice_z_end)))
         script_text = script_text.replace('__SLICE_H_DIVISOR__', str(float(slice_h_divisor)))
@@ -884,9 +864,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
         _configure_mricrogl_ini_preferences()
         cmd = [mricrogl_path, '-s', tmp_script]
         try:
-            proc = subprocess.run(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=int(timeout_s)
-            )
+            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600)
             if proc.returncode != 0:
                 raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
         except subprocess.TimeoutExpired as e:
@@ -894,10 +872,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
                 subprocess.run(['pkill', '-f', mricrogl_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception:
                 pass
-            print(
-                f"[WARNING] MRIcroGL slice render timed out after {int(timeout_s)}s. "
-                f"Proceeding with partial outputs.\n{e}"
-            )
+            print(f"[WARNING] MRIcroGL slice render timed out after 600s. Proceeding with partial outputs.\n{e}")
 
         print(f"[INFO] MRIcroGL quant_map_mm_panel raw screenshots saved under: {output_dir}")
     finally:

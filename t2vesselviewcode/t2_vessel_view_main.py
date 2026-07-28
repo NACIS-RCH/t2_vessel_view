@@ -27,7 +27,6 @@ from . import masking
 from . import volume_rendering
 from . import png_postprocess
 from . import overlay_colors
-from . import panel_config
 
 
 def run_dependency_preflight():
@@ -559,78 +558,6 @@ def _run_render_outputs(requested_panels):
             )
         except Exception as e:
             print(f"[WARNING] quant_map_mm_panel preset skipped: {e}")
-
-    if "custom_trio" in needed:
-        try:
-            cfg_path = getattr(commandline.args, "panel_config", None)
-            cfg = panel_config.load_custom_overlay_trio_config(cfg_path)
-            angles = cfg["angles"]
-            slots = cfg["slots"]
-            print(
-                f"[INFO] custom_overlay_trio: {len(slots)} slot(s), angles={angles}. "
-                "Rendering ALL erosion depths with erosions + slices (this can be slow)."
-            )
-            os.makedirs(dir_structure.renders_custom_trio_raw_dir, exist_ok=True)
-            for slot in slots:
-                base = slot["base"]
-                eroded_dir = panel_config.base_to_eroded_dir(base, dir_structure)
-                pattern = panel_config.base_to_glob_pattern(base)
-                eroded_files = _collect_eroded_files(eroded_dir, pattern)
-                if not eroded_files:
-                    raise ValueError(
-                        f"custom_overlay_trio slot '{base}' has no eroded NIfTIs in {eroded_dir}"
-                    )
-                # Fill missing overlay windows from image stats (same idea as CLI overlays).
-                overlays = []
-                for ov in slot["overlays"]:
-                    ov = dict(ov)
-                    if ov.get("min") is None or ov.get("max") is None:
-                        auto_min, auto_max = volume_rendering.compute_series_window(
-                            [ov["path"]], low_pct=1.0, high_pct=99.0
-                        )
-                        ov["min"] = float(ov.get("min", auto_min))
-                        ov["max"] = float(ov.get("max", auto_max))
-                        print(
-                            f"[WARNING] custom_overlay_trio {base}/{ov['name']}: "
-                            f"auto window min={ov['min']}, max={ov['max']}."
-                        )
-                    overlays.append(ov)
-                if base == "t1":
-                    win = volume_rendering.compute_series_window(eroded_files, low_pct=2.0, high_pct=90.0)
-                elif base == "flair":
-                    win = volume_rendering.compute_series_window(eroded_files, low_pct=7.5, high_pct=99.99)
-                else:
-                    win = volume_rendering.compute_series_window(eroded_files, low_pct=0.3, high_pct=99.75)
-                slot_outdir = os.path.join(
-                    dir_structure.renders_custom_trio_raw_dir,
-                    f"{int(slot['index']):02d}_{base}",
-                )
-                print(
-                    f"[INFO] custom_overlay_trio rendering slot {slot['index']} "
-                    f"({base}, {len(eroded_files)} eroded file(s)) -> {slot_outdir}"
-                )
-                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
-                    eroded_files,
-                    slot_outdir,
-                    overlays=overlays,
-                    window=win,
-                    main_erode_prefix="",
-                    mricrogl_path=mricrogl_exec,
-                    angles=angles,
-                    slice_all_depths=True,
-                    timeout_s=3600,
-                )
-            png_postprocess.run_preset_custom_overlay_trio(
-                raw_root=dir_structure.renders_custom_trio_raw_dir,
-                slots=slots,
-                angles=angles,
-                add_orientation_labels=True,
-                background_rgb=[0, 0, 0],
-                threshold=2,
-                pptx_name="custom_overlay_trio",
-            )
-        except Exception as e:
-            print(f"[WARNING] custom_overlay_trio panel skipped: {e}")
 
     has_additional_modalities = any([
         bool(flair_eroded_files),
