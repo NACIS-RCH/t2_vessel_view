@@ -221,6 +221,45 @@ def _collect_eroded_files(directory, pattern):
     return sorted(glob.glob(os.path.join(directory, pattern)), key=os.path.basename)
 
 
+def _available_erode_prefixes(paths):
+    """Return sorted zero-padded erosion prefixes found in NIfTI filenames."""
+    prefixes = set()
+    for path in paths:
+        match = re.match(r"^(\d+)_eroded", os.path.basename(path))
+        if match:
+            prefixes.add(match.group(1).zfill(3))
+    return sorted(prefixes, key=int)
+
+
+def _validate_custom_slice_depth(config, source_files, t2_resolved):
+    """Require the configured slice depth in every source used by the panel."""
+    required_sources = []
+    for slot in config["slots"]:
+        base = slot["base"]
+        if base in ("t1", "flair") and base not in required_sources:
+            required_sources.append(base)
+        elif base == "t2":
+            for angle in config["angles"]:
+                source = t2_resolved[angle]
+                if source not in required_sources:
+                    required_sources.append(source)
+
+    requested = config["slice_erode_prefix"]
+    missing = []
+    for source in required_sources:
+        available = _available_erode_prefixes(source_files.get(source, []))
+        if requested not in available:
+            available_text = ", ".join(available) if available else "none"
+            missing.append(
+                f"{source}: requested {requested}; available {available_text}"
+            )
+    if missing:
+        raise ValueError(
+            "custom_overlay_trio slice erosion depth is unavailable: "
+            + "; ".join(missing)
+        )
+
+
 def _fill_custom_overlay_windows(slots):
     """Fill omitted YAML overlay min/max values from overlay image statistics."""
     for slot in slots:
@@ -243,10 +282,21 @@ def _fill_custom_overlay_windows(slots):
 def _custom_structural_window(base, eroded_files):
     """Return the existing modality-specific display window for a custom slot."""
     if base == "t1":
-        return volume_rendering.compute_series_window(
+        initial_window = volume_rendering.compute_series_window(
             eroded_files,
             low_pct=2.0,
             high_pct=90.0,
+        )
+        return volume_rendering.refine_window_vmax_by_saturation_circles(
+            eroded_files,
+            initial_window,
+            radius_mm=1.5,
+            bright_threshold=250,
+            max_valid_circle_locations=4,
+            representative_slices=5,
+            max_images_to_check=3,
+            vmax_growth_factor=1.10,
+            max_iterations=8,
         )
     if base == "flair":
         return volume_rendering.compute_series_window(
@@ -387,11 +437,22 @@ def _run_render_outputs(requested_panels):
                 custom_config["angles"],
                 available_t2,
             )
+        custom_source_files = {
+            "t1": t1_eroded_files,
+            "flair": flair_eroded_files,
+            **custom_t2_files,
+        }
+        _validate_custom_slice_depth(
+            custom_config,
+            custom_source_files,
+            custom_t2_resolved,
+        )
         _fill_custom_overlay_windows(custom_config["slots"])
         print(
             f"[INFO] custom_overlay_trio validated: "
             f"{len(custom_config['slots'])} slot(s), "
-            f"angles={custom_config['angles']}."
+            f"angles={custom_config['angles']}, "
+            f"slice erosion prefix={custom_config['slice_erode_prefix']}."
         )
 
     standard_angles = [
@@ -683,10 +744,12 @@ def _run_render_outputs(requested_panels):
                         slot_output,
                         overlays=slot["overlays"],
                         window=_custom_structural_window("t2", source_files),
-                        main_erode_prefix="",
+                        main_erode_prefix=custom_config["slice_erode_prefix"],
                         mricrogl_path=mricrogl_exec,
                         angles=custom_panel_config.angle_rows(group["angles"]),
-                        slice_all_depths=True,
+                        slice_all_depths=False,
+                        save_structural_outputs=False,
+                        save_overlay_outputs=True,
                         timeout_s=3600,
                     )
             else:
@@ -703,12 +766,14 @@ def _run_render_outputs(requested_panels):
                     slot_output,
                     overlays=slot["overlays"],
                     window=_custom_structural_window(base, source_files),
-                    main_erode_prefix="",
+                    main_erode_prefix=custom_config["slice_erode_prefix"],
                     mricrogl_path=mricrogl_exec,
                     angles=custom_panel_config.angle_rows(
                         custom_config["angles"]
                     ),
-                    slice_all_depths=True,
+                    slice_all_depths=False,
+                    save_structural_outputs=False,
+                    save_overlay_outputs=True,
                     timeout_s=3600,
                 )
 

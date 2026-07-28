@@ -28,6 +28,7 @@ ALLOWED_ANGLES = (
 ALLOWED_BASES = ("t1", "t2", "flair")
 MIN_SLOTS = 2
 MAX_SLOTS = 4
+DEFAULT_SLICE_ERODE_DEPTH = 35
 
 # [label, brain azimuth, brain elevation, clip azimuth, clip elevation]
 ANGLE_SPECS = {
@@ -55,6 +56,34 @@ T2_CANDIDATES_BY_ANGLE = {
     "surg_left_ato": ("t2_sag", "t2_3d"),
     "surg_right_ato": ("t2_sag", "t2_3d"),
 }
+
+
+def parse_slice_erode_depth(value: Any = None) -> Dict[str, Any]:
+    """Validate a YAML slice depth and return integer plus padded prefix.
+
+    The integer uses the existing erosion filename units: 35 maps to prefix
+    ``035`` (3.5 mm). Quoted digit strings are accepted to make leading-zero
+    intent explicit without relying on YAML's numeric parsing rules.
+    """
+    if value is None:
+        depth = DEFAULT_SLICE_ERODE_DEPTH
+    elif isinstance(value, bool):
+        raise ValueError("slice_erode_depth must be a non-negative integer.")
+    elif isinstance(value, int):
+        depth = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        depth = int(value.strip(), 10)
+    else:
+        raise ValueError(
+            "slice_erode_depth must be a non-negative integer "
+            "(for example, 35 for prefix 035)."
+        )
+    if depth < 0:
+        raise ValueError("slice_erode_depth must be a non-negative integer.")
+    return {
+        "slice_erode_depth": depth,
+        "slice_erode_prefix": f"{depth:03d}",
+    }
 
 
 def angle_rows(angles: List[str]) -> List[List[Any]]:
@@ -211,6 +240,8 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
             "Panel config must be a YAML mapping containing 'angles' and 'slots'."
         )
 
+    slice_depth = parse_slice_erode_depth(raw.get("slice_erode_depth"))
+
     raw_angles = raw.get("angles")
     if not isinstance(raw_angles, list) or not raw_angles:
         raise ValueError("Panel config must include a non-empty 'angles' list.")
@@ -321,6 +352,7 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
 
     return {
         "path": config_path,
+        **slice_depth,
         "angles": angles,
         "slots": slots,
     }

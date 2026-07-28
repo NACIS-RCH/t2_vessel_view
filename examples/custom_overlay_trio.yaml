@@ -20,7 +20,11 @@
 # - opacity is an MRIcroGL integer from 0 to 100.
 # - min and max are optional overlay window values. Provide both together with
 #   max greater than min. If omitted, they are estimated with a warning.
-# - All erosion depths and slice sweeps are rendered.
+# - Composite erosion views are rendered at every available depth.
+# - Composite slice sweeps are rendered only at slice_erode_depth.
+# - Use integer 35 for filename prefix 035 (3.5 mm); do not use unquoted 035.
+
+slice_erode_depth: 35
 
 angles:
   - superior

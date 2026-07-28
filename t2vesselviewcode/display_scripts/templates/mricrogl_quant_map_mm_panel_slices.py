@@ -13,6 +13,8 @@ SLICE_Z_END = __SLICE_Z_END__  # type: ignore
 SLICE_H_DIVISOR = __SLICE_H_DIVISOR__  # type: ignore
 SAGITTAL_SLICE_END_FRACTION = __SAGITTAL_SLICE_END_FRACTION__  # type: ignore
 SLICE_ALL_DEPTHS = __SLICE_ALL_DEPTHS__  # type: ignore
+SAVE_STRUCTURAL_OUTPUTS = __SAVE_STRUCTURAL_OUTPUTS__  # type: ignore
+SAVE_OVERLAY_OUTPUTS = __SAVE_OVERLAY_OUTPUTS__  # type: ignore
 
 # [label, brain_az, brain_el, clip_az, clip_el]
 ANGLES = __SLICE_ANGLES__  # type: ignore
@@ -140,7 +142,8 @@ for i in IMAGELIST:
     base = os.path.splitext(os.path.basename(i))[0]
 
     # Structural erosion snapshots
-    _save_erosion_snapshot_for_all_angles('structural', base)
+    if bool(SAVE_STRUCTURAL_OUTPUTS):
+        _save_erosion_snapshot_for_all_angles('structural', base)
 
     # Overlay layers (stacked over base)
     overlay_layer_numbers = []
@@ -164,19 +167,22 @@ for i in IMAGELIST:
                 pass
 
     # Overlay erosion snapshots
-    _save_erosion_snapshot_for_all_angles('overlay', base)
+    if bool(SAVE_OVERLAY_OUTPUTS):
+        _save_erosion_snapshot_for_all_angles('overlay', base)
 
     # QMM sweeps only its selected depth; custom panels can sweep all depths.
     if bool(SLICE_ALL_DEPTHS) or (
         MAIN_ERODE_PREFIX and (str(MAIN_ERODE_PREFIX) + "_eroded") in base
     ):
-        _save_slice_sweep_for_all_angles('overlay', base)
-        for ln in overlay_layer_numbers:
-            try:
-                gl.opacity(int(ln), 0)
-            except Exception:
-                pass
-        _save_slice_sweep_for_all_angles('structural', base)
+        if bool(SAVE_OVERLAY_OUTPUTS):
+            _save_slice_sweep_for_all_angles('overlay', base)
+        if bool(SAVE_STRUCTURAL_OUTPUTS):
+            for ln in overlay_layer_numbers:
+                try:
+                    gl.opacity(int(ln), 0)
+                except Exception:
+                    pass
+            _save_slice_sweep_for_all_angles('structural', base)
 
 gl.wait(1200)
 gl.quit()
