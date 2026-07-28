@@ -819,14 +819,22 @@ def render_quant_map_mm_panel_slices_mricrogl(
     sagittal_slice_end_fraction=0.52,
     angles=None,
     slice_all_depths=False,
+    save_structural_outputs=True,
+    save_overlay_outputs=True,
     timeout_s=600,
 ):
     """Render raw slice and erosion screenshots for QMM/custom workflows.
 
     The defaults preserve quant_map_mm_panel behavior: six cardinal views and
     slice sweeps only for ``main_erode_prefix``. Custom panels can supply
-    camera/clip rows and request slice sweeps for every erosion depth.
+    camera/clip rows and select which structural/composite output families
+    are written.
     """
+    if not bool(save_structural_outputs) and not bool(save_overlay_outputs):
+        raise ValueError(
+            "At least one of save_structural_outputs or "
+            "save_overlay_outputs must be True."
+        )
     if not nifti_paths:
         return
 
@@ -877,6 +885,14 @@ def render_quant_map_mm_panel_slices_mricrogl(
         script_text = script_text.replace('__SLICE_H_DIVISOR__', str(float(slice_h_divisor)))
         script_text = script_text.replace('__SAGITTAL_SLICE_END_FRACTION__', str(float(sagittal_slice_end_fraction)))
         script_text = script_text.replace('__SLICE_ALL_DEPTHS__', repr(bool(slice_all_depths)))
+        script_text = script_text.replace(
+            '__SAVE_STRUCTURAL_OUTPUTS__',
+            repr(bool(save_structural_outputs)),
+        )
+        script_text = script_text.replace(
+            '__SAVE_OVERLAY_OUTPUTS__',
+            repr(bool(save_overlay_outputs)),
+        )
         script_text = script_text.replace('__SLICE_ANGLES__', slice_angles_literal)
 
         tmp_script = os.path.join(tmp_root, 'mricrogl_qmm_slices.py')
