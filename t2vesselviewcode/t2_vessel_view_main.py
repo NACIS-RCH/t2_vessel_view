@@ -695,6 +695,7 @@ def _run_render_outputs(requested_panels):
                 angle_to_t2_source=angle_to_t2_source,
                 qmm_angles=requested_qmm_angles,
                 overlay_names=overlay_names,
+                overlay_specs=overlay_specs,
                 add_orientation_labels=True,
                 background_rgb=[0, 0, 0],
                 threshold=2,

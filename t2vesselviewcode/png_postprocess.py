@@ -350,6 +350,26 @@ def _normalize_overlay_colorbar_specs(overlay_specs) -> List[Dict]:
     return [spec for spec in overlay_specs if isinstance(spec, dict)]
 
 
+def _deduplicate_overlay_colorbar_specs(overlay_specs) -> List[Dict]:
+    """Remove exact duplicate legends while preserving their first-seen order."""
+    unique_specs = []
+    seen = set()
+    for spec in _normalize_overlay_colorbar_specs(overlay_specs):
+        key = (
+            str(spec.get("path", "")),
+            str(spec.get("name", "")),
+            str(spec.get("color", "")),
+            spec.get("min"),
+            spec.get("max"),
+            spec.get("opacity"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_specs.append(spec)
+    return unique_specs
+
+
 def _measure_text(draw: ImageDraw.Draw, text: str, font) -> Tuple[int, int]:
     """Measure text dimensions with Pillow version fallbacks."""
     try:
@@ -482,6 +502,19 @@ def annotate_overlay_colorbar_series(folder: str, overlay_spec) -> None:
     # These concat_*.png files are the final stitched panels that become PPTX slides.
     for path in sorted(glob.glob(os.path.join(folder, 'concat_*.png'))):
         annotate_overlay_colorbars_on_png(path, path, overlay_spec)
+
+
+def annotate_overlay_colorbars_on_series(
+    paths: List[str],
+    overlay_specs,
+) -> List[str]:
+    """Apply one image/slot's deduplicated colorbars to each prepared PNG."""
+    unique_specs = _deduplicate_overlay_colorbar_specs(overlay_specs)
+    if not unique_specs:
+        return paths
+    for path in paths:
+        annotate_overlay_colorbars_on_png(path, path, unique_specs)
+    return paths
 
 
 def _layout_modality_label(
@@ -1485,7 +1518,8 @@ def run_preset_quant_map_mm_panel(
     add_orientation_labels: bool = True,
     background_rgb: List[int] = [0, 0, 0],
     threshold: int = 2,
-    pptx_name: str = "quant_map_mm_panel_overview"
+    pptx_name: str = "quant_map_mm_panel_overview",
+    overlay_specs: Optional[List[Dict]] = None,
 ) -> None:
     """Build quant_map_mm_panel stitched PNGs and PPTX from raw screenshot folders.
 
@@ -1504,6 +1538,8 @@ def run_preset_quant_map_mm_panel(
     t1_overlay_label = "T1 + " + " + ".join(t1_overlay_names)
     t2_overlay_label = f"T2 (inv) + {overlay1_name}"
     flair_overlay_label = f"FLAIR + {overlay1_name}"
+    t1_colorbar_specs = _deduplicate_overlay_colorbar_specs(overlay_specs)
+    non_t1_colorbar_specs = t1_colorbar_specs[:1]
     stitched_root = os.path.join(dir_structure.renders_qmm_stitched_dir, 'by_angle')
     _ensure_dir(stitched_root)
     combined_for_pptx = os.path.join(dir_structure.renders_qmm_stitched_dir, '_combined_for_pptx')
@@ -1557,6 +1593,19 @@ def run_preset_quant_map_mm_panel(
                     t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
                     fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
+                    annotate_overlay_colorbars_on_series(
+                        t1_ov_ann,
+                        t1_colorbar_specs,
+                    )
+                    annotate_overlay_colorbars_on_series(
+                        t2_ov_ann,
+                        non_t1_colorbar_specs,
+                    )
+                    annotate_overlay_colorbars_on_series(
+                        fl_ov_ann,
+                        non_t1_colorbar_specs,
+                    )
+
                     n = len(common_slice_keys)
                     out_angle_slices = os.path.join(stitched_root, angle, 'slices_stitched')
                     _ensure_dir(out_angle_slices)
@@ -1602,6 +1651,19 @@ def run_preset_quant_map_mm_panel(
         t1_st_e_ann = _prepare_qmm_annotated_series(erode_maps[3], common_erode_keys, os.path.join(erode_ann_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
         t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
         fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
+
+        annotate_overlay_colorbars_on_series(
+            t1_ov_e_ann,
+            t1_colorbar_specs,
+        )
+        annotate_overlay_colorbars_on_series(
+            t2_ov_e_ann,
+            non_t1_colorbar_specs,
+        )
+        annotate_overlay_colorbars_on_series(
+            fl_ov_e_ann,
+            non_t1_colorbar_specs,
+        )
 
         n_erode = len(common_erode_keys)
         out_angle_erosions = os.path.join(stitched_root, angle, 'erosions_stitched')
@@ -1700,12 +1762,6 @@ def run_preset_custom_overlay_trio(
     _ensure_dir(by_angle_root)
     _ensure_dir(combined_root)
 
-    overlay_specs = [
-        overlay
-        for slot in slots
-        for overlay in (slot.get("overlays") or [])
-        if isinstance(overlay, dict)
-    ]
     slot_dirs = [
         os.path.join(
             raw_root,
@@ -1742,20 +1798,24 @@ def run_preset_custom_overlay_trio(
             if common_erosions:
                 annotated_lists = []
                 for slot, erosion_map in zip(slots, erosion_maps):
+                    prepared = _prepare_qmm_annotated_series(
+                        erosion_map,
+                        common_erosions,
+                        os.path.join(
+                            angle_root,
+                            "erosions_annotated",
+                            f"{int(slot['index']):02d}_{slot['base']}",
+                        ),
+                        angle,
+                        slot.get("label", slot["base"]),
+                        add_orientation_labels,
+                        background_rgb,
+                        threshold,
+                    )
                     annotated_lists.append(
-                        _prepare_qmm_annotated_series(
-                            erosion_map,
-                            common_erosions,
-                            os.path.join(
-                                angle_root,
-                                "erosions_annotated",
-                                f"{int(slot['index']):02d}_{slot['base']}",
-                            ),
-                            angle,
-                            slot.get("label", slot["base"]),
-                            add_orientation_labels,
-                            background_rgb,
-                            threshold,
+                        annotate_overlay_colorbars_on_series(
+                            prepared,
+                            slot.get("overlays"),
                         )
                     )
                 erosion_output = os.path.join(
@@ -1766,10 +1826,6 @@ def run_preset_custom_overlay_trio(
                     len(common_erosions),
                     annotated_lists,
                     erosion_output,
-                )
-                annotate_overlay_colorbar_series(
-                    erosion_output,
-                    overlay_specs,
                 )
                 for path in sorted(
                     glob.glob(os.path.join(erosion_output, "concat_*.png"))
@@ -1819,20 +1875,24 @@ def run_preset_custom_overlay_trio(
             if common_slices:
                 annotated_lists = []
                 for slot, slice_map in zip(slots, slice_maps):
+                    prepared = _prepare_qmm_annotated_series(
+                        slice_map,
+                        common_slices,
+                        os.path.join(
+                            angle_root,
+                            "slices_annotated",
+                            f"{int(slot['index']):02d}_{slot['base']}",
+                        ),
+                        angle,
+                        slot.get("label", slot["base"]),
+                        add_orientation_labels,
+                        background_rgb,
+                        threshold,
+                    )
                     annotated_lists.append(
-                        _prepare_qmm_annotated_series(
-                            slice_map,
-                            common_slices,
-                            os.path.join(
-                                angle_root,
-                                "slices_annotated",
-                                f"{int(slot['index']):02d}_{slot['base']}",
-                            ),
-                            angle,
-                            slot.get("label", slot["base"]),
-                            add_orientation_labels,
-                            background_rgb,
-                            threshold,
+                        annotate_overlay_colorbars_on_series(
+                            prepared,
+                            slot.get("overlays"),
                         )
                     )
                 slice_output = os.path.join(angle_root, "slices_stitched")
@@ -1840,10 +1900,6 @@ def run_preset_custom_overlay_trio(
                     len(common_slices),
                     annotated_lists,
                     slice_output,
-                )
-                annotate_overlay_colorbar_series(
-                    slice_output,
-                    overlay_specs,
                 )
                 for path in sorted(
                     glob.glob(os.path.join(slice_output, "concat_*.png"))
