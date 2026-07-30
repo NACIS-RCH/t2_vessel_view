@@ -535,7 +535,7 @@ def _layout_modality_label(
     ]
     display_text = " + ".join(components)
     available_width = max(1, int(image_width) - (2 * int(margin)))
-    initial_size = max(14, int(image_height * 0.045))
+    initial_size = max(12, int(image_height * 0.03))
     minimum_size = max(8, int(image_height * 0.02))
 
     # If the current one-line label fits, preserve the existing appearance.
@@ -554,7 +554,7 @@ def _layout_modality_label(
     split_candidates = [
         (
             " + ".join(components[:split_index]),
-            " + ".join(components[split_index:]),
+            "+ " + " + ".join(components[split_index:]),
         )
         for split_index in range(1, len(components))
     ]
