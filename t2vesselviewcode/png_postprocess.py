@@ -542,8 +542,9 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
     - inferior:  R on left,  L on right (swap)
     - anterior:  R on left,  L on right (swap)
     - posterior: L on left,  R on right
-    - left:      L on left only
-    - right:     R on right only
+    - left, surg_left_lat, surg_left_ato: L on left only
+    - right, surg_right_lat, surg_right_ato: R on right only
+    - unknown: no orientation annotation
     """
     img = PILImage.open(path_in).convert('RGB')
     draw = ImageDraw.Draw(img)
@@ -578,16 +579,15 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
         # Swap L/R; place labels higher (top-biased)
         _draw_text_with_outline(draw, (left_x, y_top), 'R', font=font)
         _draw_text_with_outline(draw, (right_x, y_top), 'L', font=font)
-    elif angle_lower == 'left':
-        # Only L on left; place lower (bottom-biased)
+    elif angle_lower in ('left', 'surg_left_lat', 'surg_left_ato'):
+        # Left sagittal family: only L on left, lower (bottom-biased).
         _draw_text_with_outline(draw, (left_x, y_bottom), 'L', font=font)
-    elif angle_lower == 'right':
-        # Only R on right; place lower (bottom-biased)
+    elif angle_lower in ('right', 'surg_right_lat', 'surg_right_ato'):
+        # Right sagittal family: only R on right, lower (bottom-biased).
         _draw_text_with_outline(draw, (right_x, y_bottom), 'R', font=font)
     else:
-        # Fallback: default L/R at mid-bottom as a safe choice
-        _draw_text_with_outline(draw, (left_x, y_bottom), 'L', font=font)
-        _draw_text_with_outline(draw, (right_x, y_bottom), 'R', font=font)
+        # Unknown anatomy/view: omit labels rather than risk misinformation.
+        pass
 
     img.save(path_out)
 
