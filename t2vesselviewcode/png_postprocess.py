@@ -484,32 +484,153 @@ def annotate_overlay_colorbar_series(folder: str, overlay_spec) -> None:
         annotate_overlay_colorbars_on_png(path, path, overlay_spec)
 
 
+def _layout_modality_label(
+    draw: ImageDraw.Draw,
+    modality_text: str,
+    image_width: int,
+    image_height: int,
+    margin: int,
+) -> Dict:
+    """Choose one/two label lines and the largest font that fits the image.
+
+    Long custom labels wrap only between `` + `` components, keeping modality
+    and overlay names intact. Underscores are converted to spaces for display.
+    """
+    components = [
+        component.strip().replace("_", " ")
+        for component in str(modality_text).split(" + ")
+    ]
+    display_text = " + ".join(components)
+    available_width = max(1, int(image_width) - (2 * int(margin)))
+    initial_size = max(14, int(image_height * 0.045))
+    minimum_size = max(8, int(image_height * 0.02))
+
+    # If the current one-line label fits, preserve the existing appearance.
+    initial_font = _load_annotation_font(initial_size)
+    initial_dimensions = _measure_text(draw, display_text, initial_font)
+    if initial_dimensions[0] <= available_width:
+        return {
+            "lines": [display_text],
+            "font": initial_font,
+            "font_size": initial_size,
+            "line_sizes": [initial_dimensions],
+            "available_width": available_width,
+        }
+
+    # Build every legal two-line split and select by measured pixel width.
+    split_candidates = [
+        (
+            " + ".join(components[:split_index]),
+            " + ".join(components[split_index:]),
+        )
+        for split_index in range(1, len(components))
+    ]
+
+    for font_size in range(initial_size, minimum_size - 1, -1):
+        font = _load_annotation_font(font_size)
+        if split_candidates:
+            measured_candidates = []
+            for lines in split_candidates:
+                sizes = [_measure_text(draw, line, font) for line in lines]
+                widths = [size[0] for size in sizes]
+                measured_candidates.append(
+                    (
+                        max(widths),
+                        abs(widths[0] - widths[1]),
+                        lines,
+                        sizes,
+                    )
+                )
+            best = min(
+                measured_candidates,
+                key=lambda candidate: (candidate[0], candidate[1]),
+            )
+            if best[0] <= available_width:
+                return {
+                    "lines": list(best[2]),
+                    "font": font,
+                    "font_size": font_size,
+                    "line_sizes": best[3],
+                    "available_width": available_width,
+                }
+        else:
+            dimensions = _measure_text(draw, display_text, font)
+            if dimensions[0] <= available_width:
+                return {
+                    "lines": [display_text],
+                    "font": font,
+                    "font_size": font_size,
+                    "line_sizes": [dimensions],
+                    "available_width": available_width,
+                }
+
+    # Pathological single-component names may still exceed the readable lower
+    # bound. Return the best lower-bound layout without adding a third line.
+    font = _load_annotation_font(minimum_size)
+    if split_candidates:
+        measured_candidates = []
+        for lines in split_candidates:
+            sizes = [_measure_text(draw, line, font) for line in lines]
+            widths = [size[0] for size in sizes]
+            measured_candidates.append(
+                (
+                    max(widths),
+                    abs(widths[0] - widths[1]),
+                    lines,
+                    sizes,
+                )
+            )
+        best = min(
+            measured_candidates,
+            key=lambda candidate: (candidate[0], candidate[1]),
+        )
+        lines = list(best[2])
+        line_sizes = best[3]
+    else:
+        lines = [display_text]
+        line_sizes = [_measure_text(draw, display_text, font)]
+    return {
+        "lines": lines,
+        "font": font,
+        "font_size": minimum_size,
+        "line_sizes": line_sizes,
+        "available_width": available_width,
+    }
+
+
 def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: str) -> None:
     """Annotate a PNG with a modality label centered at the bottom edge.
 
-    - Uses a relative font size (~4.5% of height, min 14 px).
-    - Centers text horizontally and places it just above the bottom margin.
+    - Keeps short labels at the existing ~4.5%-of-height font size.
+    - Wraps long component lists onto at most two centered lines.
+    - Shrinks only as needed to fit the individual panel column.
+    - Displays underscores as spaces without changing stored overlay names.
     - Draws with an outline for visibility on dark/light backgrounds.
     """
     img = PILImage.open(path_in).convert('RGB')
     draw = ImageDraw.Draw(img)
     w, h = img.size
 
-    font_size = max(14, int(h * 0.045))
-    font = _load_annotation_font(font_size)
-
-    # Measure text to center precisely
-    try:
-        bbox = draw.textbbox((0, 0), modality_text, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-    except Exception:
-        text_w, text_h = draw.textsize(modality_text, font=font)
-
     margin = max(8, int(h * 0.02))
-    x = max(0, (w - text_w) // 2)
-    y = max(0, h - margin - text_h)
-    _draw_text_with_outline(draw, (x, y), modality_text, font=font)
+    layout = _layout_modality_label(draw, modality_text, w, h, margin)
+    line_gap = max(2, int(layout["font_size"] * 0.2))
+    total_height = sum(size[1] for size in layout["line_sizes"])
+    if len(layout["lines"]) > 1:
+        total_height += line_gap * (len(layout["lines"]) - 1)
+    current_y = max(0, h - margin - total_height)
+
+    for line, (text_width, text_height) in zip(
+        layout["lines"],
+        layout["line_sizes"],
+    ):
+        x = max(0, (w - text_width) // 2)
+        _draw_text_with_outline(
+            draw,
+            (x, current_y),
+            line,
+            font=layout["font"],
+        )
+        current_y += text_height + line_gap
     img.save(path_out)
 
 
