@@ -406,8 +406,25 @@ def _run_render_outputs(requested_panels):
     custom_config = None
     custom_panel_config = None
     custom_t2_resolved = {}
+    custom_t2_sag_left_files = [
+        path for path in t2_sag_eroded_files
+        if "t2_sag_left" in os.path.basename(path).lower()
+    ]
+    custom_t2_sag_right_files = [
+        path for path in t2_sag_eroded_files
+        if "t2_sag_right" in os.path.basename(path).lower()
+    ]
+    custom_t2_sag_generic_files = [
+        path for path in t2_sag_eroded_files
+        if (
+            "t2_sag_left" not in os.path.basename(path).lower()
+            and "t2_sag_right" not in os.path.basename(path).lower()
+        )
+    ]
     custom_t2_files = {
-        "t2_sag": t2_sag_eroded_files,
+        "t2_sag_left": custom_t2_sag_left_files,
+        "t2_sag_right": custom_t2_sag_right_files,
+        "t2_sag_generic": custom_t2_sag_generic_files,
         "t2_cor": t2_cor_eroded_files,
         "t2_tra": t2_tra_eroded_files,
         "t2_3d": t2_3d_eroded_files,
