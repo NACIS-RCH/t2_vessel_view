@@ -11,10 +11,11 @@
 # - Overlays are optional per slot. A slot with only "base" displays the
 #   structural image without a colorbar.
 # - base: t2 automatically selects the best available T2 acquisition:
-#     left/right: sagittal, then 3D, then transverse
+#     left/right: matching-side sagittal, generic sagittal, 3D, then transverse
 #     anterior/posterior: coronal, then 3D
 #     superior/inferior: transverse, then 3D
-#     surgical views: sagittal, then 3D
+#     surgical/ATO: matching-side sagittal, generic sagittal, then 3D
+#   An opposite-side sagittal acquisition is never used as a fallback.
 # - Overlay images must already be aligned with the structural images.
 # - Relative overlay paths are resolved relative to this YAML file.
 # - opacity is an MRIcroGL integer from 0 to 100.

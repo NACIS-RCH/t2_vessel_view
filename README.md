@@ -127,7 +127,10 @@ are optional for each slot, so a slot can display only its structural base.
 Custom erosion composites are saved at every depth; slice sweeps use the single
 YAML `slice_erode_depth` (default `35`, corresponding to prefix `035`). Exact
 0/1 binary overlays are detected automatically and shown in legends as a solid
-foreground-value colour swatch without numeric endpoints.
+foreground-value colour swatch without numeric endpoints. For left/right
+sagittal, surgical and ATO views, custom T2 selection prefers the matching-side
+sagittal acquisition, then a generic sagittal acquisition; it never substitutes
+the opposite-side sagittal acquisition.
 
 ### One-shot: preprocess and panels in a single command
 ```bash

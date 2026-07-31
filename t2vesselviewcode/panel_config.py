@@ -45,16 +45,16 @@ ANGLE_SPECS = {
 }
 
 T2_CANDIDATES_BY_ANGLE = {
-    "left": ("t2_sag", "t2_3d", "t2_tra"),
-    "right": ("t2_sag", "t2_3d", "t2_tra"),
+    "left": ("t2_sag_left", "t2_sag_generic", "t2_3d", "t2_tra"),
+    "right": ("t2_sag_right", "t2_sag_generic", "t2_3d", "t2_tra"),
     "anterior": ("t2_cor", "t2_3d"),
     "posterior": ("t2_cor", "t2_3d"),
     "superior": ("t2_tra", "t2_3d"),
     "inferior": ("t2_tra", "t2_3d"),
-    "surg_left_lat": ("t2_sag", "t2_3d"),
-    "surg_right_lat": ("t2_sag", "t2_3d"),
-    "surg_left_ato": ("t2_sag", "t2_3d"),
-    "surg_right_ato": ("t2_sag", "t2_3d"),
+    "surg_left_lat": ("t2_sag_left", "t2_sag_generic", "t2_3d"),
+    "surg_right_lat": ("t2_sag_right", "t2_sag_generic", "t2_3d"),
+    "surg_left_ato": ("t2_sag_left", "t2_sag_generic", "t2_3d"),
+    "surg_right_ato": ("t2_sag_right", "t2_sag_generic", "t2_3d"),
 }
 
 
