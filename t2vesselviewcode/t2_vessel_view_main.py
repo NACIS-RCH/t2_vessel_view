@@ -27,6 +27,7 @@ from . import masking
 from . import volume_rendering
 from . import png_postprocess
 from . import overlay_colors
+from . import extra_images
 
 
 def run_dependency_preflight():
@@ -243,6 +244,8 @@ def _validate_custom_slice_depth(config, source_files, t2_resolved):
                 source = t2_resolved[angle]
                 if source not in required_sources:
                     required_sources.append(source)
+        elif base not in required_sources:
+            required_sources.append(base)
 
     requested = config["slice_erode_prefix"]
     missing = []
@@ -311,8 +314,62 @@ def _custom_structural_window(base, eroded_files):
     )
 
 
+def _reorient_extra_images(specs):
+    """Convert/reorient ordered named extra-image inputs."""
+    items = []
+    for spec in specs or []:
+        tag = f"extra_{spec['name']}"
+        items.append({
+            "name": spec["name"],
+            "tag": tag,
+            "path": preprocess.convert_and_reorient(spec["path"], tag),
+        })
+    return items
+
+
+def _preprocess_extra_images(reoriented_items, preprocessed_main_image_path):
+    """N4-correct and affine-register named extras to the main T1."""
+    items = []
+    for item in reoriented_items:
+        preprocessed_path, preprocessed_image = preprocess.preprocess_n4_reg(
+            item["path"],
+            item["tag"],
+            preprocessed_main_image_path,
+        )
+        items.append({
+            "name": item["name"],
+            "tag": item["tag"],
+            "path": preprocessed_path,
+            "image": preprocessed_image,
+        })
+    return items
+
+
+def _erode_extra_images(
+    preprocessed_items,
+    zero_padded_erode_depths_list,
+    eroded_masks_dict,
+):
+    """Apply all existing erosion masks to each named extra structural image."""
+    for item in preprocessed_items:
+        output_dir = extra_images.eroded_extra_dir(
+            dir_structure.eroded_nifti_dir,
+            item["name"],
+        )
+        masking.multiply_masks_by_images(
+            item["image"],
+            item["tag"],
+            output_dir,
+            zero_padded_erode_depths_list,
+            eroded_masks_dict,
+        )
+
+
 def _validate_render_existing_inputs(requested_panels):
     """Validate that render-only mode has the existing eroded files it needs."""
+    discovered_extras = extra_images.discover_eroded_extras(
+        dir_structure.eroded_nifti_dir
+    )
     eroded_sets = {
         "T1": _collect_eroded_files(dir_structure.eroded_nifti_t1_dir, "*eroded*t1*nii.gz"),
         "FLAIR": _collect_eroded_files(dir_structure.eroded_nifti_flair_dir, "*eroded*flair*nii.gz"),
@@ -320,6 +377,11 @@ def _validate_render_existing_inputs(requested_panels):
         "T2 coronal": _collect_eroded_files(dir_structure.eroded_nifti_t2_cor_dir, "*eroded*t2_cor*nii.gz"),
         "T2 transverse": _collect_eroded_files(dir_structure.eroded_nifti_t2_tra_dir, "*eroded*t2_tra*nii.gz"),
         "T2 3D": _collect_eroded_files(dir_structure.eroded_nifti_t2_3d_dir, "*eroded*t2_3d*nii.gz"),
+        "Named extras": [
+            path
+            for paths in discovered_extras.values()
+            for path in paths
+        ],
     }
     any_eroded = any(eroded_sets.values())
     if not any_eroded:
@@ -400,6 +462,9 @@ def _run_render_outputs(requested_panels):
     t2_tra_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz')
     t2_3d_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz')
     flair_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz')
+    extra_eroded_files = extra_images.discover_eroded_extras(
+        dir_structure.eroded_nifti_dir
+    )
 
     # Validate the custom panel completely before any MRIcroGL render starts.
     # Import the dependency-light YAML module lazily so CLI bootstrap is unchanged.
@@ -433,7 +498,8 @@ def _run_render_outputs(requested_panels):
         from . import panel_config as custom_panel_config
 
         custom_config = custom_panel_config.load_custom_overlay_trio_config(
-            commandline.args.panel_config
+            commandline.args.panel_config,
+            extra_base_names=list(extra_eroded_files),
         )
         missing_bases = []
         for slot in custom_config["slots"]:
@@ -441,6 +507,14 @@ def _run_render_outputs(requested_panels):
                 missing_bases.append(f"slot {slot['index']} requires T1")
             elif slot["base"] == "flair" and not flair_eroded_files:
                 missing_bases.append(f"slot {slot['index']} requires FLAIR")
+            elif (
+                slot["base"] not in ("t1", "t2", "flair")
+                and not extra_eroded_files.get(slot["base"])
+            ):
+                missing_bases.append(
+                    f"slot {slot['index']} requires extra image "
+                    f"'{slot['base']}'"
+                )
         if missing_bases:
             raise ValueError(
                 "custom_overlay_trio cannot render: " + "; ".join(missing_bases)
@@ -458,6 +532,7 @@ def _run_render_outputs(requested_panels):
             "t1": t1_eroded_files,
             "flair": flair_eroded_files,
             **custom_t2_files,
+            **extra_eroded_files,
         }
         _validate_custom_slice_depth(
             custom_config,
@@ -771,9 +846,15 @@ def _run_render_outputs(requested_panels):
                         timeout_s=3600,
                     )
             else:
-                source_files = (
-                    t1_eroded_files if base == "t1" else flair_eroded_files
-                )
+                if base == "t1":
+                    source_files = t1_eroded_files
+                    window_base = "t1"
+                elif base == "flair":
+                    source_files = flair_eroded_files
+                    window_base = "flair"
+                else:
+                    source_files = extra_eroded_files[base]
+                    window_base = "t1"
                 print(
                     f"[INFO] Rendering custom_overlay_trio slot {slot['index']} "
                     f"({base}): {len(source_files)} erosion file(s), "
@@ -783,7 +864,7 @@ def _run_render_outputs(requested_panels):
                     source_files,
                     slot_output,
                     overlays=slot["overlays"],
-                    window=_custom_structural_window(base, source_files),
+                    window=_custom_structural_window(window_base, source_files),
                     main_erode_prefix=custom_config["slice_erode_prefix"],
                     mricrogl_path=mricrogl_exec,
                     angles=custom_panel_config.angle_rows(
@@ -893,21 +974,26 @@ def main():
 
     # Validate input files before processing
     print("Validating input files...")
+    optional_input_paths = {
+        't2_sag': commandline.args.t2_sag,
+        't2_cor': commandline.args.t2_cor,
+        't2_tra': commandline.args.t2_tra,
+        'flair': commandline.args.flair,
+        'user_mask': commandline.args.user_mask,
+        'user_mask_structural': commandline.args.user_mask_structural,
+        'overlay1': getattr(commandline.args, 'overlay1_path', None),
+        'overlay2': getattr(commandline.args, 'overlay2_path', None),
+        'overlay3': getattr(commandline.args, 'overlay3_path', None),
+        'overlay4': getattr(commandline.args, 'overlay4_path', None),
+    }
+    optional_input_paths.update({
+        f"extra_{spec['name']}": spec["path"]
+        for spec in getattr(commandline.args, "extra_images", [])
+    })
     is_valid, errors = input_validation.validate_input_files(
-        commandline.args.t1, 
+        commandline.args.t1,
         commandline.args.mri_dir,
-        {
-            't2_sag': commandline.args.t2_sag,
-            't2_cor': commandline.args.t2_cor,
-            't2_tra': commandline.args.t2_tra,
-            'flair': commandline.args.flair,
-            'user_mask': commandline.args.user_mask,
-            'user_mask_structural': commandline.args.user_mask_structural,
-            'overlay1': getattr(commandline.args, 'overlay1_path', None),
-            'overlay2': getattr(commandline.args, 'overlay2_path', None),
-            'overlay3': getattr(commandline.args, 'overlay3_path', None),
-            'overlay4': getattr(commandline.args, 'overlay4_path', None)
-        }
+        optional_input_paths,
     )
 
     if not is_valid:
@@ -970,8 +1056,17 @@ def main():
     if commandline.args.t2_3d:
         reoriented_t2_3d_path = preprocess.convert_and_reorient(commandline.args.t2_3d, "t2_3d")
 
+    reoriented_extra_items = _reorient_extra_images(
+        getattr(commandline.args, "extra_images", [])
+    )
+
     ## preprocess t1    
     preprocessed_main_image, preprocessed_main_image_path = preprocess.preprocess_main_image(reoriented_main_image_path)
+
+    preprocessed_extra_items = _preprocess_extra_images(
+        reoriented_extra_items,
+        preprocessed_main_image_path,
+    )
 
     ## preprocess flair and register to preprocessed t1
     preprocessed_flair = None
@@ -1141,6 +1236,11 @@ def main():
             res_flair = masking.multiply_masks_by_images(preprocessed_flair_img, "flair", dir_structure.eroded_nifti_flair_dir, zero_padded_erode_depths_list, eroded_masks_dict)
         if postprocessed_t2_3d_image:
             res_t2_3d = masking.multiply_masks_by_images(postprocessed_t2_3d_image, "t2_3d", dir_structure.eroded_nifti_t2_3d_dir, zero_padded_erode_depths_list, eroded_masks_dict)
+        _erode_extra_images(
+            preprocessed_extra_items,
+            zero_padded_erode_depths_list,
+            eroded_masks_dict,
+        )
 
         # After Eroded_nifti outputs exist, drop Masks intermediates (keep Preprocessed_mask).
         masking.cleanup_masks_directory()

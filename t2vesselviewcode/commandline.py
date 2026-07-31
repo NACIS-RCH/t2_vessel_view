@@ -1,6 +1,8 @@
 import argparse
 import os
 
+from . import extra_images
+
 parser = argparse.ArgumentParser(description='A tool for generating Vessel Maps using T2-weighted MRI', 
             epilog='Version 1, Bonnie Alexander 2023')
 
@@ -33,6 +35,17 @@ parser.add_argument('-f',
             action='store', 
             help='Optional 3D FLAIR or similar bright 3D image such as Mag.This will usually substantially help with segmentation of the brain parenchyma (FLAIR) and intracranial structures including venous sinuses (Mag). Also needed if you want to run the flair watershed segmentation option.',
             dest='flair')
+
+parser.add_argument('--extra-image',
+            metavar='NAME=PATH',
+            type=extra_images.parse_extra_image_spec,
+            action='append',
+            default=[],
+            help=(
+                'Optional named T1-like structural image. Repeat as needed, '
+                'for example --extra-image t1_gd=/data/T1_Gd.nii.gz.'
+            ),
+            dest='extra_images')
 
 parser.add_argument('-c', 
             metavar='t2_coronal', 
@@ -403,6 +416,11 @@ parser.add_argument('--dicom-metadata-source',
 ## add flags for save masks or not
 
 args = parser.parse_args()
+
+try:
+    extra_images.validate_extra_image_specs(args.extra_images)
+except ValueError as error:
+    parser.error(str(error))
 
 if args.user_mask and not args.user_mask_structural:
     parser.error('-m/--user_mask requires -n/--user_mask_structural.')

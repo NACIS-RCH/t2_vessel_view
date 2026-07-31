@@ -6,11 +6,12 @@ YAML feature from changing the package's existing CLI import order.
 """
 
 import os
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
 from . import overlay_colors
+from . import extra_images
 
 
 ALLOWED_ANGLES = (
@@ -220,7 +221,10 @@ def _validate_window(
     return {"min": minimum_float, "max": maximum_float}
 
 
-def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
+def load_custom_overlay_trio_config(
+    path: str,
+    extra_base_names: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     """Load and validate a ``custom_overlay_trio`` YAML file.
 
     Relative overlay paths are resolved relative to the YAML file. Returned
@@ -241,6 +245,16 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
         )
 
     slice_depth = parse_slice_erode_depth(raw.get("slice_erode_depth"))
+    normalized_extra_bases = []
+    for name in extra_base_names or []:
+        normalized = str(name).strip().lower()
+        if (
+            extra_images.EXTRA_NAME_PATTERN.fullmatch(normalized)
+            and normalized not in extra_images.RESERVED_EXTRA_NAMES
+            and normalized not in normalized_extra_bases
+        ):
+            normalized_extra_bases.append(normalized)
+    allowed_bases = tuple(ALLOWED_BASES) + tuple(normalized_extra_bases)
 
     raw_angles = raw.get("angles")
     if not isinstance(raw_angles, list) or not raw_angles:
@@ -273,10 +287,10 @@ def load_custom_overlay_trio_config(path: str) -> Dict[str, Any]:
                 "optional 'overlays'."
             )
         base = str(raw_slot.get("base", "")).strip().lower()
-        if base not in ALLOWED_BASES:
+        if base not in allowed_bases:
             raise ValueError(
                 f"Slot {slot_index} has unknown base '{raw_slot.get('base')}'. "
-                f"Allowed: {', '.join(ALLOWED_BASES)}."
+                f"Allowed: {', '.join(allowed_bases)}."
             )
 
         raw_overlays = raw_slot.get("overlays", [])

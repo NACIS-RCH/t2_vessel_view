@@ -25,6 +25,7 @@ class TestCliImportChecks(unittest.TestCase):
         self.assertEqual(result.returncode, 0, combined)
         self.assertNotIn("AttributeError", combined)
         self.assertIn("--panel-config", combined)
+        self.assertIn("--extra-image", combined)
         self.assertIn("custom_overlay_trio", combined)
 
     def test_render_existing_dry_run_forwards_custom_config(self):

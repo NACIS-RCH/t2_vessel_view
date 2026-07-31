@@ -132,6 +132,26 @@ sagittal, surgical and ATO views, custom T2 selection prefers the matching-side
 sagittal acquisition, then a generic sagittal acquisition; it never substitutes
 the opposite-side sagittal acquisition.
 
+### Named extra T1-like structural images
+
+Repeat `--extra-image NAME=PATH` to preprocess additional T1-like images such
+as post-contrast or prior-time-point T1:
+
+```bash
+t2vesselview \
+  -d /path/to/mri_dir \
+  -i /path/to/current_T1.nii.gz \
+  --extra-image t1_gd=/path/to/T1_Gd.nii.gz \
+  --extra-image t1_prior=/path/to/prior_T1.nii.gz
+```
+
+Each extra is reoriented, N4-corrected, affine registered to the main T1, and
+eroded with the same masks. Outputs are stored under
+`Processing/Preprocessed_Extra/NAME` and `Eroded_nifti/Extra/NAME`. An existing
+extra can be selected directly in a custom panel with `base: t1_gd`. Extras use
+the normal T1 structural windowing; quantitative maps and segmentations should
+remain overlay inputs instead.
+
 ### One-shot: preprocess and panels in a single command
 ```bash
 python -m t2vesselviewcode.t2_vessel_view_main \
@@ -157,6 +177,7 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 - **Required**: `-d` MRI directory, `-i` T1 (main structural)
 - **Optional**: `-f` FLAIR (3D). Required only when `--auto-mask-method watershed` is used.
 - **Optional**: `-s` T2 sagittal, `-c` T2 coronal, `-t` T2 transverse, `--t2_sag_left`, `--t2_sag_right`, `-p` 3D T2, `-m` user mask, `-n` mask structural, `--use-hull-mask`
+- **Optional repeatable**: `--extra-image NAME=PATH` for additional T1-like structural images registered to the main T1
 
 
 ## Outputs

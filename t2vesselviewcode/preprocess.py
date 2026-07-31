@@ -10,6 +10,7 @@ import numpy as np
 from . import utils
 from . import dir_structure
 from . import commandline
+from . import extra_images
 
 # TODO: add CLI option to specify age/infant or not infant re brain size 
 # TODO: possibly add option for rigid registration to template or ac/pc aligment  
@@ -71,6 +72,12 @@ def get_preprocessed_dir(image_type):
         return dir_structure.processed_t2_sag_dir
     elif t == "t2_3d":
         return dir_structure.processed_t2_3d_dir
+    elif t.startswith("extra_"):
+        name = t[len("extra_"):]
+        return extra_images.processed_extra_dir(
+            dir_structure.processing_dir,
+            name,
+        )
     elif t in ("user_mask", "user_mask_structural"):
         return dir_structure.processing_mask_dir
     elif t.startswith("t2"):

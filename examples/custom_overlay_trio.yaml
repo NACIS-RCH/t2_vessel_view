@@ -8,6 +8,8 @@
 # Notes:
 # - Choose 2 to 4 slots. Repeating a base is allowed.
 # - Bases are t1, t2, or flair.
+# - Named T1-like extras created with --extra-image NAME=PATH can also be used
+#   directly as bases (for example, base: t1_gd).
 # - Overlays are optional per slot. A slot with only "base" displays the
 #   structural image without a colorbar.
 # - base: t2 automatically selects the best available T2 acquisition:
@@ -64,3 +66,7 @@ slots:
 
   # Structural-only slot: omit "overlays" when none are wanted.
   - base: flair
+
+  # Example named extra after preprocessing with:
+  #   --extra-image t1_gd=/path/to/T1_Gd.nii.gz
+  # - base: t1_gd

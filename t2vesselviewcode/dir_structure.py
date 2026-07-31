@@ -1,5 +1,6 @@
 import os
 from . import commandline
+from . import extra_images
 
 ## make directory structure
 
@@ -18,6 +19,7 @@ def _set_t2vv_root(t2vv_root):
     global eroded_nifti_t2_sag_dir
     global eroded_nifti_t2_3d_dir
     global eroded_nifti_flair_dir
+    global eroded_nifti_extra_dir
     global powerpoints_dir
     global dicom_dir
     global processing_dir
@@ -31,6 +33,7 @@ def _set_t2vv_root(t2vv_root):
     global processed_t2_cor_dir
     global processed_t2_sag_dir
     global processed_t2_3d_dir
+    global processed_extra_dir
     global renders_dir
     global renders_t1_dir
     global renders_t1_erode_dir
@@ -54,6 +57,7 @@ def _set_t2vv_root(t2vv_root):
     eroded_nifti_t2_sag_dir = os.path.join(eroded_nifti_dir, "T2_Sag")
     eroded_nifti_t2_3d_dir = os.path.join(eroded_nifti_dir, "T2_3D")
     eroded_nifti_flair_dir = os.path.join(eroded_nifti_dir, "FLAIR")
+    eroded_nifti_extra_dir = extra_images.eroded_extra_root(eroded_nifti_dir)
     powerpoints_dir = os.path.join(main_t2vv_dir, "PowerPoints")
     dicom_dir = os.path.join(main_t2vv_dir, "Dicom")
     processing_dir = os.path.join(main_t2vv_dir, "Processing")
@@ -67,6 +71,7 @@ def _set_t2vv_root(t2vv_root):
     processed_t2_cor_dir = os.path.join(processing_dir, "Preprocessed_T2_Cor")
     processed_t2_sag_dir = os.path.join(processing_dir, "Preprocessed_T2_Sag")
     processed_t2_3d_dir = os.path.join(processing_dir, "Preprocessed_T2_3D")
+    processed_extra_dir = extra_images.processed_extra_root(processing_dir)
     renders_dir = os.path.join(main_t2vv_dir, "3D_renders_png")
     renders_t1_dir = os.path.join(renders_dir, "T1_3D_renders")
     renders_t1_erode_dir = os.path.join(renders_t1_dir, "by_erode_level")
@@ -91,6 +96,7 @@ def _set_t2vv_root(t2vv_root):
         eroded_nifti_t2_sag_dir,
         eroded_nifti_t2_3d_dir,
         eroded_nifti_flair_dir,
+        eroded_nifti_extra_dir,
         powerpoints_dir,
         dicom_dir,
         processing_dir,
@@ -104,6 +110,7 @@ def _set_t2vv_root(t2vv_root):
         processed_t2_cor_dir,
         processed_t2_sag_dir,
         processed_t2_3d_dir,
+        processed_extra_dir,
         renders_dir,
         renders_t1_dir,
         renders_t1_erode_dir,
@@ -165,6 +172,13 @@ def modality_directories_for_args(args):
         dirs.extend([processed_t2_sag_dir, eroded_nifti_t2_sag_dir])
     if getattr(args, "t2_3d", None):
         dirs.extend([processed_t2_3d_dir, eroded_nifti_t2_3d_dir])
+    for spec in getattr(args, "extra_images", []) or []:
+        dirs.extend([
+            processed_extra_dir,
+            eroded_nifti_extra_dir,
+            extra_images.processed_extra_dir(processing_dir, spec["name"]),
+            extra_images.eroded_extra_dir(eroded_nifti_dir, spec["name"]),
+        ])
     return dirs
 
 
