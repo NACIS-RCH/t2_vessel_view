@@ -17,8 +17,11 @@ import os
 import glob
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import Dict, List, Optional, Set, Tuple
 
+import nibabel as nib
+import numpy as np
 import pydicom
 import pyvips
 from PIL import Image as PILImage, ImageDraw, ImageFont, ImageChops, ImageStat
@@ -319,6 +322,77 @@ def _interpolate_clut_rgb(nodes: List[Tuple[int, Tuple[int, int, int]]], intensi
     return nodes[-1][1]
 
 
+@lru_cache(maxsize=64)
+def _is_binary_overlay_cached(
+    absolute_path: str,
+    modified_ns: int,
+    file_size: int,
+) -> bool:
+    """Inspect one immutable file version for exact visible 0/1 values."""
+    del modified_ns, file_size  # Included in the cache key for invalidation.
+    try:
+        data = np.asanyarray(nib.load(absolute_path).dataobj)
+        if data.size == 0:
+            return False
+        finite_mask = np.isfinite(data)
+        if not np.any(finite_mask):
+            return False
+        values = data[finite_mask]
+        return bool(
+            np.any(values == 1)
+            and np.all((values == 0) | (values == 1))
+        )
+    except Exception:
+        return False
+
+
+def _is_binary_overlay(path: str) -> bool:
+    """Return True for an existing NIfTI whose finite values are exactly 0/1."""
+    try:
+        absolute_path = os.path.abspath(os.path.expanduser(str(path)))
+        stat = os.stat(absolute_path)
+        return _is_binary_overlay_cached(
+            absolute_path,
+            int(stat.st_mtime_ns),
+            int(stat.st_size),
+        )
+    except Exception:
+        return False
+
+
+def _value_to_clut_intensity(value, window_min, window_max) -> float:
+    """Map one overlay value through its min/max window to CLUT position."""
+    try:
+        value_float = float(value)
+        minimum = float(window_min)
+        maximum = float(window_max)
+    except (TypeError, ValueError):
+        return 255.0
+    if not all(np.isfinite(item) for item in (value_float, minimum, maximum)):
+        return 255.0
+    if maximum <= minimum:
+        return 255.0
+    position = 255.0 * (value_float - minimum) / (maximum - minimum)
+    return max(0.0, min(255.0, position))
+
+
+def _make_binary_clut_swatch_image(
+    color_name: str,
+    width: int,
+    height: int,
+    window_min,
+    window_max,
+) -> Optional[PILImage.Image]:
+    """Create a solid swatch matching binary foreground value 1."""
+    clut_path = _resolve_bundled_clut_path(color_name)
+    if not clut_path:
+        return None
+    nodes = _parse_mricrogl_clut(clut_path)
+    position = _value_to_clut_intensity(1, window_min, window_max)
+    rgb = _interpolate_clut_rgb(nodes, position)
+    return PILImage.new("RGB", (width, height), rgb)
+
+
 def _make_clut_colorbar_image(color_name: str, width: int, height: int) -> Optional[PILImage.Image]:
     """Create a vertical colorbar from a bundled MRIcroGL .clut file."""
     # Missing CLUTs are handled by the caller with a clear warning.
@@ -417,8 +491,15 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
     for overlay_idx, overlay_spec in enumerate(overlay_specs, start=1):
         color_name = str(overlay_spec.get("color", "")).lower()
         overlay_name = str(overlay_spec.get("name", f"Overlay{overlay_idx}"))
-        min_text = _format_colorbar_value(overlay_spec.get("min", ""))
-        max_text = _format_colorbar_value(overlay_spec.get("max", ""))
+        is_binary = _is_binary_overlay(overlay_spec.get("path", ""))
+        min_text = (
+            "" if is_binary
+            else _format_colorbar_value(overlay_spec.get("min", ""))
+        )
+        max_text = (
+            "" if is_binary
+            else _format_colorbar_value(overlay_spec.get("max", ""))
+        )
 
         # If the renderer used a colour we did not bundle, skip only that legend.
         if not _resolve_bundled_clut_path(color_name):
@@ -429,7 +510,20 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             continue
 
         try:
-            colorbar = _make_clut_colorbar_image(color_name, bar_width, bar_height)
+            if is_binary:
+                colorbar = _make_binary_clut_swatch_image(
+                    color_name,
+                    bar_width,
+                    bar_height,
+                    overlay_spec.get("min"),
+                    overlay_spec.get("max"),
+                )
+            else:
+                colorbar = _make_clut_colorbar_image(
+                    color_name,
+                    bar_width,
+                    bar_height,
+                )
         except Exception as e:
             print(
                 f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
@@ -441,9 +535,13 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
 
         # Measure text so each stacked legend entry can align consistently.
         name_w, name_h = _measure_text(draw, overlay_name, name_font)
-        max_w, max_h = _measure_text(draw, max_text, value_font)
-        min_w, min_h = _measure_text(draw, min_text, value_font)
-        value_width = max(max_w, min_w)
+        if is_binary:
+            max_w = max_h = min_w = min_h = 0
+            value_width = 0
+        else:
+            max_w, max_h = _measure_text(draw, max_text, value_font)
+            min_w, min_h = _measure_text(draw, min_text, value_font)
+            value_width = max(max_w, min_w)
         entry_width = max(name_w, value_width + gap + bar_width)
         global_value_width = max(global_value_width, value_width)
         global_block_width = max(global_block_width, entry_width)
@@ -456,6 +554,7 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             "name_h": name_h,
             "max_h": max_h,
             "min_h": min_h,
+            "is_binary": is_binary,
         })
 
     if not entries:
@@ -478,13 +577,19 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
 
         # Draw all text with a black outline so it remains readable over image content.
         _draw_text_with_outline(draw, (name_x, name_y), entry["name"], font=name_font)
-        _draw_text_with_outline(draw, (block_x, bar_y - entry["max_h"] // 2), entry["max"], font=value_font)
-        _draw_text_with_outline(
-            draw,
-            (block_x, bar_y + bar_height - entry["min_h"] // 2),
-            entry["min"],
-            font=value_font
-        )
+        if not entry["is_binary"]:
+            _draw_text_with_outline(
+                draw,
+                (block_x, bar_y - entry["max_h"] // 2),
+                entry["max"],
+                font=value_font,
+            )
+            _draw_text_with_outline(
+                draw,
+                (block_x, bar_y + bar_height - entry["min_h"] // 2),
+                entry["min"],
+                font=value_font,
+            )
         current_y = bar_y + bar_height + (entry_gap if entry_idx < len(entries) - 1 else 0)
 
     img.save(path_out)

@@ -125,7 +125,9 @@ T1, automatically selected T2, and FLAIR bases; cardinal/surgical views; overlay
 colour, opacity and window values; all erosion depths; and slice sweeps. Overlays
 are optional for each slot, so a slot can display only its structural base.
 Custom erosion composites are saved at every depth; slice sweeps use the single
-YAML `slice_erode_depth` (default `35`, corresponding to prefix `035`).
+YAML `slice_erode_depth` (default `35`, corresponding to prefix `035`). Exact
+0/1 binary overlays are detected automatically and shown in legends as a solid
+foreground-value colour swatch without numeric endpoints.
 
 ### One-shot: preprocess and panels in a single command
 ```bash
