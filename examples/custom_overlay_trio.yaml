@@ -39,34 +39,38 @@ angles:
   # - surg_left_ato
   # - surg_right_ato
 
-slots:
-  - base: t1
-    overlays:
-      - path: ./pet.nii.gz
-        color: jet
-        name: PET
-        opacity: 60
-        min: 0
-        max: 10
+# Use `rows` for a two-row panel (1–4 slots per row). For the original one-row
+# layout, replace this mapping with a flat `slots:` list containing 2–4 slots.
+rows:
+  top:
+    - base: t1
+      overlays:
+        - path: ./pet.nii.gz
+          color: jet
+          name: PET
+          opacity: 60
+          min: 0
+          max: 10
 
-  - base: t2
-    overlays:
-      - path: ./fmri.nii.gz
-        color: hot
-        name: fMRI
-        opacity: 50
-        min: 0
-        max: 5
-      - path: ./tract.nii.gz
-        color: green
-        name: Tract
-        opacity: 80
-        min: 0
-        max: 1
+    - base: t2
+      overlays:
+        - path: ./fmri.nii.gz
+          color: hot
+          name: fMRI
+          opacity: 50
+          min: 0
+          max: 5
+        - path: ./tract.nii.gz
+          color: green
+          name: Tract
+          opacity: 80
+          min: 0
+          max: 1
 
-  # Structural-only slot: omit "overlays" when none are wanted.
-  - base: flair
+  bottom:
+    # Structural-only slot: omit "overlays" when none are wanted.
+    - base: flair
 
-  # Example named extra after preprocessing with:
-  #   --extra-image t1_gd=/path/to/T1_Gd.nii.gz
-  # - base: t1_gd
+    # Example named extra after preprocessing with:
+    #   --extra-image t1_gd=/path/to/T1_Gd.nii.gz
+    # - base: t1_gd

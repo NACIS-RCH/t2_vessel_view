@@ -1841,6 +1841,36 @@ def _common_erode_and_slice_keys(
     return _sort_erode_and_slice_keys(common)
 
 
+def _stitch_custom_slot_rows(
+    n: int,
+    slots: List[Dict],
+    prepared_lists: List[List[str]],
+    output_location: str,
+) -> None:
+    """Stitch normalized custom slots as one row or left-aligned two rows."""
+    top_lists = [
+        paths
+        for slot, paths in zip(slots, prepared_lists)
+        if slot.get("row", "top") == "top"
+    ]
+    bottom_lists = [
+        paths
+        for slot, paths in zip(slots, prepared_lists)
+        if slot.get("row", "top") == "bottom"
+    ]
+    if not top_lists:
+        raise ValueError("custom_overlay_trio requires at least one top-row slot.")
+    if bottom_lists:
+        concat_two_rows(
+            n,
+            top_lists=top_lists,
+            bottom_lists=bottom_lists,
+            output_location=output_location,
+        )
+    else:
+        concat_one_row(n, top_lists, output_location)
+
+
 def run_preset_custom_overlay_trio(
     raw_root: str,
     stitched_root: str,
@@ -1927,8 +1957,9 @@ def run_preset_custom_overlay_trio(
                     angle_root,
                     "erosions_stitched",
                 )
-                concat_one_row(
+                _stitch_custom_slot_rows(
                     len(common_erosions),
+                    slots,
                     annotated_lists,
                     erosion_output,
                 )
@@ -2001,8 +2032,9 @@ def run_preset_custom_overlay_trio(
                         )
                     )
                 slice_output = os.path.join(angle_root, "slices_stitched")
-                concat_one_row(
+                _stitch_custom_slot_rows(
                     len(common_slices),
+                    slots,
                     annotated_lists,
                     slice_output,
                 )

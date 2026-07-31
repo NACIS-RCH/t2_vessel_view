@@ -29,6 +29,7 @@ ALLOWED_ANGLES = (
 ALLOWED_BASES = ("t1", "t2", "flair")
 MIN_SLOTS = 2
 MAX_SLOTS = 4
+ROW_NAMES = ("top", "bottom")
 DEFAULT_SLICE_ERODE_DEPTH = 35
 
 # [label, brain azimuth, brain elevation, clip azimuth, clip elevation]
@@ -221,6 +222,68 @@ def _validate_window(
     return {"min": minimum_float, "max": maximum_float}
 
 
+def _normalize_slot_layout(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Normalize legacy one-row or explicit top/bottom YAML slot layout."""
+    has_slots = "slots" in raw
+    has_rows = "rows" in raw
+    if has_slots == has_rows:
+        raise ValueError(
+            "Panel config must include exactly one of 'slots' (one row) "
+            "or 'rows' (top and bottom)."
+        )
+
+    entries: List[Dict[str, Any]] = []
+    if has_slots:
+        raw_slots = raw.get("slots")
+        if not isinstance(raw_slots, list):
+            raise ValueError("Panel config 'slots' must be a list.")
+        if not MIN_SLOTS <= len(raw_slots) <= MAX_SLOTS:
+            raise ValueError(
+                f"One-row panel config must contain {MIN_SLOTS} to "
+                f"{MAX_SLOTS} slots (got {len(raw_slots)})."
+            )
+        for column, raw_slot in enumerate(raw_slots):
+            entries.append({
+                "row": "top",
+                "column": column,
+                "raw_slot": raw_slot,
+            })
+        return entries
+
+    raw_rows = raw.get("rows")
+    if not isinstance(raw_rows, dict):
+        raise ValueError("Panel config 'rows' must be a top/bottom mapping.")
+    row_keys = set(raw_rows)
+    missing = [name for name in ROW_NAMES if name not in row_keys]
+    unknown = sorted(row_keys - set(ROW_NAMES))
+    if missing or unknown:
+        details = []
+        if missing:
+            details.append("missing: " + ", ".join(missing))
+        if unknown:
+            details.append("unknown: " + ", ".join(unknown))
+        raise ValueError(
+            "Panel config rows must contain exactly 'top' and 'bottom' "
+            f"({'; '.join(details)})."
+        )
+    for row_name in ROW_NAMES:
+        raw_slots = raw_rows[row_name]
+        if not isinstance(raw_slots, list):
+            raise ValueError(f"Panel row '{row_name}' must be a list.")
+        if not 1 <= len(raw_slots) <= MAX_SLOTS:
+            raise ValueError(
+                f"Panel row '{row_name}' must contain 1 to {MAX_SLOTS} "
+                f"slots (got {len(raw_slots)})."
+            )
+        for column, raw_slot in enumerate(raw_slots):
+            entries.append({
+                "row": row_name,
+                "column": column,
+                "raw_slot": raw_slot,
+            })
+    return entries
+
+
 def load_custom_overlay_trio_config(
     path: str,
     extra_base_names: Optional[List[str]] = None,
@@ -241,7 +304,8 @@ def load_custom_overlay_trio_config(
         raw = yaml.safe_load(stream)
     if not isinstance(raw, dict):
         raise ValueError(
-            "Panel config must be a YAML mapping containing 'angles' and 'slots'."
+            "Panel config must be a YAML mapping containing 'angles' and "
+            "either 'slots' or 'rows'."
         )
 
     slice_depth = parse_slice_erode_depth(raw.get("slice_erode_depth"))
@@ -269,18 +333,18 @@ def load_custom_overlay_trio_config(
         if angle not in angles:
             angles.append(angle)
 
-    raw_slots = raw.get("slots")
-    if not isinstance(raw_slots, list):
-        raise ValueError("Panel config must include a 'slots' list.")
-    if not MIN_SLOTS <= len(raw_slots) <= MAX_SLOTS:
-        raise ValueError(
-            f"Panel config must contain {MIN_SLOTS} to {MAX_SLOTS} slots "
-            f"(got {len(raw_slots)})."
-        )
+    layout_entries = _normalize_slot_layout(raw)
 
     config_dir = os.path.dirname(config_path)
     slots: List[Dict[str, Any]] = []
-    for slot_index, raw_slot in enumerate(raw_slots):
+    rows: Dict[str, List[Dict[str, Any]]] = {
+        "top": [],
+        "bottom": [],
+    }
+    for slot_index, layout_entry in enumerate(layout_entries):
+        raw_slot = layout_entry["raw_slot"]
+        row_name = layout_entry["row"]
+        column = layout_entry["column"]
         if not isinstance(raw_slot, dict):
             raise ValueError(
                 f"Slot {slot_index} must be a mapping with a 'base' and "
@@ -355,18 +419,21 @@ def load_custom_overlay_trio_config(
         label = base.upper()
         if overlay_names:
             label += " + " + " + ".join(overlay_names)
-        slots.append(
-            {
-                "index": slot_index,
-                "base": base,
-                "label": label,
-                "overlays": overlays,
-            }
-        )
+        slot = {
+            "index": slot_index,
+            "row": row_name,
+            "column": column,
+            "base": base,
+            "label": label,
+            "overlays": overlays,
+        }
+        slots.append(slot)
+        rows[row_name].append(slot)
 
     return {
         "path": config_path,
         **slice_depth,
         "angles": angles,
         "slots": slots,
+        "rows": rows,
     }

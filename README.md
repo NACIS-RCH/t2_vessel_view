@@ -132,6 +132,22 @@ sagittal, surgical and ATO views, custom T2 selection prefers the matching-side
 sagittal acquisition, then a generic sagittal acquisition; it never substitutes
 the opposite-side sagittal acquisition.
 
+Custom YAML can use the existing one-row `slots:` list (2–4 slots), or two
+explicit rows with 1–4 slots each:
+
+```yaml
+rows:
+  top:
+    - base: t1
+    - base: t1_gd
+  bottom:
+    - base: flair
+    - base: t2
+```
+
+If row lengths differ, both rows are left-aligned and the wider row determines
+the final panel width.
+
 ### Named extra T1-like structural images
 
 Repeat `--extra-image NAME=PATH` to preprocess additional T1-like images such
