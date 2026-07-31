@@ -17,8 +17,11 @@ import os
 import glob
 import re
 from datetime import datetime
+from functools import lru_cache
 from typing import Dict, List, Optional, Set, Tuple
 
+import nibabel as nib
+import numpy as np
 import pydicom
 import pyvips
 from PIL import Image as PILImage, ImageDraw, ImageFont, ImageChops, ImageStat
@@ -319,6 +322,77 @@ def _interpolate_clut_rgb(nodes: List[Tuple[int, Tuple[int, int, int]]], intensi
     return nodes[-1][1]
 
 
+@lru_cache(maxsize=64)
+def _is_binary_overlay_cached(
+    absolute_path: str,
+    modified_ns: int,
+    file_size: int,
+) -> bool:
+    """Inspect one immutable file version for exact visible 0/1 values."""
+    del modified_ns, file_size  # Included in the cache key for invalidation.
+    try:
+        data = np.asanyarray(nib.load(absolute_path).dataobj)
+        if data.size == 0:
+            return False
+        finite_mask = np.isfinite(data)
+        if not np.any(finite_mask):
+            return False
+        values = data[finite_mask]
+        return bool(
+            np.any(values == 1)
+            and np.all((values == 0) | (values == 1))
+        )
+    except Exception:
+        return False
+
+
+def _is_binary_overlay(path: str) -> bool:
+    """Return True for an existing NIfTI whose finite values are exactly 0/1."""
+    try:
+        absolute_path = os.path.abspath(os.path.expanduser(str(path)))
+        stat = os.stat(absolute_path)
+        return _is_binary_overlay_cached(
+            absolute_path,
+            int(stat.st_mtime_ns),
+            int(stat.st_size),
+        )
+    except Exception:
+        return False
+
+
+def _value_to_clut_intensity(value, window_min, window_max) -> float:
+    """Map one overlay value through its min/max window to CLUT position."""
+    try:
+        value_float = float(value)
+        minimum = float(window_min)
+        maximum = float(window_max)
+    except (TypeError, ValueError):
+        return 255.0
+    if not all(np.isfinite(item) for item in (value_float, minimum, maximum)):
+        return 255.0
+    if maximum <= minimum:
+        return 255.0
+    position = 255.0 * (value_float - minimum) / (maximum - minimum)
+    return max(0.0, min(255.0, position))
+
+
+def _make_binary_clut_swatch_image(
+    color_name: str,
+    width: int,
+    height: int,
+    window_min,
+    window_max,
+) -> Optional[PILImage.Image]:
+    """Create a solid swatch matching binary foreground value 1."""
+    clut_path = _resolve_bundled_clut_path(color_name)
+    if not clut_path:
+        return None
+    nodes = _parse_mricrogl_clut(clut_path)
+    position = _value_to_clut_intensity(1, window_min, window_max)
+    rgb = _interpolate_clut_rgb(nodes, position)
+    return PILImage.new("RGB", (width, height), rgb)
+
+
 def _make_clut_colorbar_image(color_name: str, width: int, height: int) -> Optional[PILImage.Image]:
     """Create a vertical colorbar from a bundled MRIcroGL .clut file."""
     # Missing CLUTs are handled by the caller with a clear warning.
@@ -348,6 +422,26 @@ def _normalize_overlay_colorbar_specs(overlay_specs) -> List[Dict]:
     if isinstance(overlay_specs, dict):
         overlay_specs = [overlay_specs]
     return [spec for spec in overlay_specs if isinstance(spec, dict)]
+
+
+def _deduplicate_overlay_colorbar_specs(overlay_specs) -> List[Dict]:
+    """Remove exact duplicate legends while preserving their first-seen order."""
+    unique_specs = []
+    seen = set()
+    for spec in _normalize_overlay_colorbar_specs(overlay_specs):
+        key = (
+            str(spec.get("path", "")),
+            str(spec.get("name", "")),
+            str(spec.get("color", "")),
+            spec.get("min"),
+            spec.get("max"),
+            spec.get("opacity"),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        unique_specs.append(spec)
+    return unique_specs
 
 
 def _measure_text(draw: ImageDraw.Draw, text: str, font) -> Tuple[int, int]:
@@ -397,8 +491,15 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
     for overlay_idx, overlay_spec in enumerate(overlay_specs, start=1):
         color_name = str(overlay_spec.get("color", "")).lower()
         overlay_name = str(overlay_spec.get("name", f"Overlay{overlay_idx}"))
-        min_text = _format_colorbar_value(overlay_spec.get("min", ""))
-        max_text = _format_colorbar_value(overlay_spec.get("max", ""))
+        is_binary = _is_binary_overlay(overlay_spec.get("path", ""))
+        min_text = (
+            "" if is_binary
+            else _format_colorbar_value(overlay_spec.get("min", ""))
+        )
+        max_text = (
+            "" if is_binary
+            else _format_colorbar_value(overlay_spec.get("max", ""))
+        )
 
         # If the renderer used a colour we did not bundle, skip only that legend.
         if not _resolve_bundled_clut_path(color_name):
@@ -409,7 +510,20 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             continue
 
         try:
-            colorbar = _make_clut_colorbar_image(color_name, bar_width, bar_height)
+            if is_binary:
+                colorbar = _make_binary_clut_swatch_image(
+                    color_name,
+                    bar_width,
+                    bar_height,
+                    overlay_spec.get("min"),
+                    overlay_spec.get("max"),
+                )
+            else:
+                colorbar = _make_clut_colorbar_image(
+                    color_name,
+                    bar_width,
+                    bar_height,
+                )
         except Exception as e:
             print(
                 f"[WARNING] Overlay colorbar skipped for {os.path.basename(path_in)}: "
@@ -421,9 +535,13 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
 
         # Measure text so each stacked legend entry can align consistently.
         name_w, name_h = _measure_text(draw, overlay_name, name_font)
-        max_w, max_h = _measure_text(draw, max_text, value_font)
-        min_w, min_h = _measure_text(draw, min_text, value_font)
-        value_width = max(max_w, min_w)
+        if is_binary:
+            max_w = max_h = min_w = min_h = 0
+            value_width = 0
+        else:
+            max_w, max_h = _measure_text(draw, max_text, value_font)
+            min_w, min_h = _measure_text(draw, min_text, value_font)
+            value_width = max(max_w, min_w)
         entry_width = max(name_w, value_width + gap + bar_width)
         global_value_width = max(global_value_width, value_width)
         global_block_width = max(global_block_width, entry_width)
@@ -436,6 +554,7 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             "name_h": name_h,
             "max_h": max_h,
             "min_h": min_h,
+            "is_binary": is_binary,
         })
 
     if not entries:
@@ -458,13 +577,19 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
 
         # Draw all text with a black outline so it remains readable over image content.
         _draw_text_with_outline(draw, (name_x, name_y), entry["name"], font=name_font)
-        _draw_text_with_outline(draw, (block_x, bar_y - entry["max_h"] // 2), entry["max"], font=value_font)
-        _draw_text_with_outline(
-            draw,
-            (block_x, bar_y + bar_height - entry["min_h"] // 2),
-            entry["min"],
-            font=value_font
-        )
+        if not entry["is_binary"]:
+            _draw_text_with_outline(
+                draw,
+                (block_x, bar_y - entry["max_h"] // 2),
+                entry["max"],
+                font=value_font,
+            )
+            _draw_text_with_outline(
+                draw,
+                (block_x, bar_y + bar_height - entry["min_h"] // 2),
+                entry["min"],
+                font=value_font,
+            )
         current_y = bar_y + bar_height + (entry_gap if entry_idx < len(entries) - 1 else 0)
 
     img.save(path_out)
@@ -484,32 +609,166 @@ def annotate_overlay_colorbar_series(folder: str, overlay_spec) -> None:
         annotate_overlay_colorbars_on_png(path, path, overlay_spec)
 
 
+def annotate_overlay_colorbars_on_series(
+    paths: List[str],
+    overlay_specs,
+) -> List[str]:
+    """Apply one image/slot's deduplicated colorbars to each prepared PNG."""
+    unique_specs = _deduplicate_overlay_colorbar_specs(overlay_specs)
+    if not unique_specs:
+        return paths
+    for path in paths:
+        annotate_overlay_colorbars_on_png(path, path, unique_specs)
+    return paths
+
+
+def _layout_modality_label(
+    draw: ImageDraw.Draw,
+    modality_text: str,
+    image_width: int,
+    image_height: int,
+    margin: int,
+) -> Dict:
+    """Choose one/two label lines and the largest font that fits the image.
+
+    Long custom labels wrap only between `` + `` components, keeping modality
+    and overlay names intact. Underscores are converted to spaces for display.
+    """
+    components = [
+        component.strip().replace("_", " ")
+        for component in str(modality_text).split(" + ")
+    ]
+    display_text = " + ".join(components)
+    available_width = max(1, int(image_width) - (2 * int(margin)))
+    initial_size = max(12, int(image_height * 0.03))
+    minimum_size = max(8, int(image_height * 0.02))
+
+    # If the current one-line label fits, preserve the existing appearance.
+    initial_font = _load_annotation_font(initial_size)
+    initial_dimensions = _measure_text(draw, display_text, initial_font)
+    if initial_dimensions[0] <= available_width:
+        return {
+            "lines": [display_text],
+            "font": initial_font,
+            "font_size": initial_size,
+            "line_sizes": [initial_dimensions],
+            "available_width": available_width,
+        }
+
+    # Build every legal two-line split and select by measured pixel width.
+    split_candidates = [
+        (
+            " + ".join(components[:split_index]),
+            "+ " + " + ".join(components[split_index:]),
+        )
+        for split_index in range(1, len(components))
+    ]
+
+    for font_size in range(initial_size, minimum_size - 1, -1):
+        font = _load_annotation_font(font_size)
+        if split_candidates:
+            measured_candidates = []
+            for lines in split_candidates:
+                sizes = [_measure_text(draw, line, font) for line in lines]
+                widths = [size[0] for size in sizes]
+                measured_candidates.append(
+                    (
+                        max(widths),
+                        abs(widths[0] - widths[1]),
+                        lines,
+                        sizes,
+                    )
+                )
+            best = min(
+                measured_candidates,
+                key=lambda candidate: (candidate[0], candidate[1]),
+            )
+            if best[0] <= available_width:
+                return {
+                    "lines": list(best[2]),
+                    "font": font,
+                    "font_size": font_size,
+                    "line_sizes": best[3],
+                    "available_width": available_width,
+                }
+        else:
+            dimensions = _measure_text(draw, display_text, font)
+            if dimensions[0] <= available_width:
+                return {
+                    "lines": [display_text],
+                    "font": font,
+                    "font_size": font_size,
+                    "line_sizes": [dimensions],
+                    "available_width": available_width,
+                }
+
+    # Pathological single-component names may still exceed the readable lower
+    # bound. Return the best lower-bound layout without adding a third line.
+    font = _load_annotation_font(minimum_size)
+    if split_candidates:
+        measured_candidates = []
+        for lines in split_candidates:
+            sizes = [_measure_text(draw, line, font) for line in lines]
+            widths = [size[0] for size in sizes]
+            measured_candidates.append(
+                (
+                    max(widths),
+                    abs(widths[0] - widths[1]),
+                    lines,
+                    sizes,
+                )
+            )
+        best = min(
+            measured_candidates,
+            key=lambda candidate: (candidate[0], candidate[1]),
+        )
+        lines = list(best[2])
+        line_sizes = best[3]
+    else:
+        lines = [display_text]
+        line_sizes = [_measure_text(draw, display_text, font)]
+    return {
+        "lines": lines,
+        "font": font,
+        "font_size": minimum_size,
+        "line_sizes": line_sizes,
+        "available_width": available_width,
+    }
+
+
 def annotate_modality_center_bottom(path_in: str, path_out: str, modality_text: str) -> None:
     """Annotate a PNG with a modality label centered at the bottom edge.
 
-    - Uses a relative font size (~4.5% of height, min 14 px).
-    - Centers text horizontally and places it just above the bottom margin.
+    - Keeps short labels at the existing ~4.5%-of-height font size.
+    - Wraps long component lists onto at most two centered lines.
+    - Shrinks only as needed to fit the individual panel column.
+    - Displays underscores as spaces without changing stored overlay names.
     - Draws with an outline for visibility on dark/light backgrounds.
     """
     img = PILImage.open(path_in).convert('RGB')
     draw = ImageDraw.Draw(img)
     w, h = img.size
 
-    font_size = max(14, int(h * 0.045))
-    font = _load_annotation_font(font_size)
-
-    # Measure text to center precisely
-    try:
-        bbox = draw.textbbox((0, 0), modality_text, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
-    except Exception:
-        text_w, text_h = draw.textsize(modality_text, font=font)
-
     margin = max(8, int(h * 0.02))
-    x = max(0, (w - text_w) // 2)
-    y = max(0, h - margin - text_h)
-    _draw_text_with_outline(draw, (x, y), modality_text, font=font)
+    layout = _layout_modality_label(draw, modality_text, w, h, margin)
+    line_gap = max(2, int(layout["font_size"] * 0.2))
+    total_height = sum(size[1] for size in layout["line_sizes"])
+    if len(layout["lines"]) > 1:
+        total_height += line_gap * (len(layout["lines"]) - 1)
+    current_y = max(0, h - margin - total_height)
+
+    for line, (text_width, text_height) in zip(
+        layout["lines"],
+        layout["line_sizes"],
+    ):
+        x = max(0, (w - text_width) // 2)
+        _draw_text_with_outline(
+            draw,
+            (x, current_y),
+            line,
+            font=layout["font"],
+        )
+        current_y += text_height + line_gap
     img.save(path_out)
 
 
@@ -542,8 +801,9 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
     - inferior:  R on left,  L on right (swap)
     - anterior:  R on left,  L on right (swap)
     - posterior: L on left,  R on right
-    - left:      L on left only
-    - right:     R on right only
+    - left, surg_left_lat, surg_left_ato: L on left only
+    - right, surg_right_lat, surg_right_ato: R on right only
+    - unknown: no orientation annotation
     """
     img = PILImage.open(path_in).convert('RGB')
     draw = ImageDraw.Draw(img)
@@ -578,16 +838,15 @@ def annotate_by_angle_on_png(path_in: str, path_out: str, angle: str) -> None:
         # Swap L/R; place labels higher (top-biased)
         _draw_text_with_outline(draw, (left_x, y_top), 'R', font=font)
         _draw_text_with_outline(draw, (right_x, y_top), 'L', font=font)
-    elif angle_lower == 'left':
-        # Only L on left; place lower (bottom-biased)
+    elif angle_lower in ('left', 'surg_left_lat', 'surg_left_ato'):
+        # Left sagittal family: only L on left, lower (bottom-biased).
         _draw_text_with_outline(draw, (left_x, y_bottom), 'L', font=font)
-    elif angle_lower == 'right':
-        # Only R on right; place lower (bottom-biased)
+    elif angle_lower in ('right', 'surg_right_lat', 'surg_right_ato'):
+        # Right sagittal family: only R on right, lower (bottom-biased).
         _draw_text_with_outline(draw, (right_x, y_bottom), 'R', font=font)
     else:
-        # Fallback: default L/R at mid-bottom as a safe choice
-        _draw_text_with_outline(draw, (left_x, y_bottom), 'L', font=font)
-        _draw_text_with_outline(draw, (right_x, y_bottom), 'R', font=font)
+        # Unknown anatomy/view: omit labels rather than risk misinformation.
+        pass
 
     img.save(path_out)
 
@@ -1364,7 +1623,8 @@ def run_preset_quant_map_mm_panel(
     add_orientation_labels: bool = True,
     background_rgb: List[int] = [0, 0, 0],
     threshold: int = 2,
-    pptx_name: str = "quant_map_mm_panel_overview"
+    pptx_name: str = "quant_map_mm_panel_overview",
+    overlay_specs: Optional[List[Dict]] = None,
 ) -> None:
     """Build quant_map_mm_panel stitched PNGs and PPTX from raw screenshot folders.
 
@@ -1383,6 +1643,8 @@ def run_preset_quant_map_mm_panel(
     t1_overlay_label = "T1 + " + " + ".join(t1_overlay_names)
     t2_overlay_label = f"T2 (inv) + {overlay1_name}"
     flair_overlay_label = f"FLAIR + {overlay1_name}"
+    t1_colorbar_specs = _deduplicate_overlay_colorbar_specs(overlay_specs)
+    non_t1_colorbar_specs = t1_colorbar_specs[:1]
     stitched_root = os.path.join(dir_structure.renders_qmm_stitched_dir, 'by_angle')
     _ensure_dir(stitched_root)
     combined_for_pptx = os.path.join(dir_structure.renders_qmm_stitched_dir, '_combined_for_pptx')
@@ -1436,6 +1698,19 @@ def run_preset_quant_map_mm_panel(
                     t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
                     fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
+                    annotate_overlay_colorbars_on_series(
+                        t1_ov_ann,
+                        t1_colorbar_specs,
+                    )
+                    annotate_overlay_colorbars_on_series(
+                        t2_ov_ann,
+                        non_t1_colorbar_specs,
+                    )
+                    annotate_overlay_colorbars_on_series(
+                        fl_ov_ann,
+                        non_t1_colorbar_specs,
+                    )
+
                     n = len(common_slice_keys)
                     out_angle_slices = os.path.join(stitched_root, angle, 'slices_stitched')
                     _ensure_dir(out_angle_slices)
@@ -1482,6 +1757,19 @@ def run_preset_quant_map_mm_panel(
         t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
         fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
+        annotate_overlay_colorbars_on_series(
+            t1_ov_e_ann,
+            t1_colorbar_specs,
+        )
+        annotate_overlay_colorbars_on_series(
+            t2_ov_e_ann,
+            non_t1_colorbar_specs,
+        )
+        annotate_overlay_colorbars_on_series(
+            fl_ov_e_ann,
+            non_t1_colorbar_specs,
+        )
+
         n_erode = len(common_erode_keys)
         out_angle_erosions = os.path.join(stitched_root, angle, 'erosions_stitched')
         _ensure_dir(out_angle_erosions)
@@ -1513,3 +1801,236 @@ def run_preset_quant_map_mm_panel(
                 pass
 
     export_pptx_from_folder(combined_for_pptx, pptx_basename=pptx_name)
+
+
+def _build_erode_and_slice_map(paths: List[str]) -> Dict[str, str]:
+    """Map ``erosion depth:slice number`` to all-depth slice screenshots."""
+    mapped: Dict[str, str] = {}
+    for path in sorted(paths):
+        basename = os.path.basename(path)
+        slice_match = re.search(r"-(\d{3})-", basename)
+        erode_match = re.search(r"(\d+)_eroded", basename)
+        if not slice_match or not erode_match:
+            continue
+        key = (
+            f"{str(erode_match.group(1)).zfill(3)}:"
+            f"{str(slice_match.group(1)).zfill(3)}"
+        )
+        if key not in mapped:
+            mapped[key] = path
+    return mapped
+
+
+def _sort_erode_and_slice_keys(keys: Set[str]) -> List[str]:
+    """Sort composite ``erosion:slice`` keys numerically."""
+    return sorted(
+        keys,
+        key=lambda key: tuple(int(part) for part in key.split(":", 1)),
+    )
+
+
+def _common_erode_and_slice_keys(
+    slice_maps: List[Dict[str, str]],
+) -> List[str]:
+    """Return ordered all-depth slice keys shared across every slot."""
+    if not slice_maps:
+        return []
+    common = set(slice_maps[0].keys())
+    for slice_map in slice_maps[1:]:
+        common &= set(slice_map.keys())
+    return _sort_erode_and_slice_keys(common)
+
+
+def run_preset_custom_overlay_trio(
+    raw_root: str,
+    stitched_root: str,
+    slots: List[Dict],
+    angles: List[str],
+    add_orientation_labels: bool = True,
+    background_rgb: Optional[List[int]] = None,
+    threshold: int = 2,
+    pptx_name: str = "custom_overlay_trio",
+) -> None:
+    """Stitch custom overlay slots into one-row erosion and slice panels.
+
+    For each angle, erosion panels are appended first, followed by all-depth
+    slice panels. Only erosion/slice keys shared by every configured slot are
+    stitched, ensuring columns always describe the same depth and clip position.
+    """
+    if background_rgb is None:
+        background_rgb = [0, 0, 0]
+    if not slots:
+        raise ValueError("custom_overlay_trio requires at least one slot.")
+
+    by_angle_root = os.path.join(stitched_root, "by_angle")
+    combined_root = os.path.join(stitched_root, "_combined_for_pptx")
+    _ensure_dir(by_angle_root)
+    _ensure_dir(combined_root)
+
+    slot_dirs = [
+        os.path.join(
+            raw_root,
+            f"{int(slot['index']):02d}_{slot['base']}",
+        )
+        for slot in slots
+    ]
+
+    from shutil import copyfile
+
+    slide_index = 0
+    for angle in angles:
+        angle_root = os.path.join(by_angle_root, angle)
+
+        # Erosion snapshots: one screenshot per erosion depth and slot.
+        erosion_dirs = [
+            os.path.join(slot_dir, f"{angle}_erosion_overlay")
+            for slot_dir in slot_dirs
+        ]
+        if all(os.path.isdir(path) for path in erosion_dirs):
+            erosion_maps = [
+                _build_prefix_map(_list_pngs(path))
+                for path in erosion_dirs
+            ]
+            common_erosions = _common_prefixes_across_maps(erosion_maps)
+            all_erosions: Set[str] = set()
+            for erosion_map in erosion_maps:
+                all_erosions.update(erosion_map.keys())
+            _log_skipped_prefixes(
+                f"custom_overlay_trio erosions ({angle})",
+                all_erosions,
+                common_erosions,
+            )
+            if common_erosions:
+                annotated_lists = []
+                for slot, erosion_map in zip(slots, erosion_maps):
+                    prepared = _prepare_qmm_annotated_series(
+                        erosion_map,
+                        common_erosions,
+                        os.path.join(
+                            angle_root,
+                            "erosions_annotated",
+                            f"{int(slot['index']):02d}_{slot['base']}",
+                        ),
+                        angle,
+                        slot.get("label", slot["base"]),
+                        add_orientation_labels,
+                        background_rgb,
+                        threshold,
+                    )
+                    annotated_lists.append(
+                        annotate_overlay_colorbars_on_series(
+                            prepared,
+                            slot.get("overlays"),
+                        )
+                    )
+                erosion_output = os.path.join(
+                    angle_root,
+                    "erosions_stitched",
+                )
+                concat_one_row(
+                    len(common_erosions),
+                    annotated_lists,
+                    erosion_output,
+                )
+                for path in sorted(
+                    glob.glob(os.path.join(erosion_output, "concat_*.png"))
+                ):
+                    copyfile(
+                        path,
+                        os.path.join(
+                            combined_root,
+                            f"concat_{slide_index:05d}.png",
+                        ),
+                    )
+                    slide_index += 1
+            else:
+                print(
+                    f"[WARNING] custom_overlay_trio: no shared erosion "
+                    f"depths for angle '{angle}'."
+                )
+        else:
+            print(
+                f"[WARNING] custom_overlay_trio: missing erosion folder(s) "
+                f"for angle '{angle}'."
+            )
+
+        # Slice sweeps: key by erosion depth and clip slice to avoid collisions.
+        slice_dirs = [
+            os.path.join(slot_dir, f"{angle}_slices_overlay")
+            for slot_dir in slot_dirs
+        ]
+        if all(os.path.isdir(path) for path in slice_dirs):
+            slice_maps = [
+                _build_erode_and_slice_map(_list_pngs(path))
+                for path in slice_dirs
+            ]
+            common_slices = _common_erode_and_slice_keys(slice_maps)
+            all_slices: Set[str] = set()
+            for slice_map in slice_maps:
+                all_slices.update(slice_map.keys())
+            skipped_slices = _sort_erode_and_slice_keys(
+                all_slices - set(common_slices)
+            )
+            if skipped_slices:
+                print(
+                    f"[INFO] custom_overlay_trio slices ({angle}): skipped "
+                    f"keys missing in one or more slots: "
+                    f"{', '.join(skipped_slices)}"
+                )
+            if common_slices:
+                annotated_lists = []
+                for slot, slice_map in zip(slots, slice_maps):
+                    prepared = _prepare_qmm_annotated_series(
+                        slice_map,
+                        common_slices,
+                        os.path.join(
+                            angle_root,
+                            "slices_annotated",
+                            f"{int(slot['index']):02d}_{slot['base']}",
+                        ),
+                        angle,
+                        slot.get("label", slot["base"]),
+                        add_orientation_labels,
+                        background_rgb,
+                        threshold,
+                    )
+                    annotated_lists.append(
+                        annotate_overlay_colorbars_on_series(
+                            prepared,
+                            slot.get("overlays"),
+                        )
+                    )
+                slice_output = os.path.join(angle_root, "slices_stitched")
+                concat_one_row(
+                    len(common_slices),
+                    annotated_lists,
+                    slice_output,
+                )
+                for path in sorted(
+                    glob.glob(os.path.join(slice_output, "concat_*.png"))
+                ):
+                    copyfile(
+                        path,
+                        os.path.join(
+                            combined_root,
+                            f"concat_{slide_index:05d}.png",
+                        ),
+                    )
+                    slide_index += 1
+            else:
+                print(
+                    f"[WARNING] custom_overlay_trio: no shared slice keys "
+                    f"for angle '{angle}'."
+                )
+        else:
+            print(
+                f"[WARNING] custom_overlay_trio: missing slice folder(s) "
+                f"for angle '{angle}'."
+            )
+
+    if slide_index == 0:
+        raise ValueError(
+            "custom_overlay_trio produced no stitched panels; check raw "
+            "MRIcroGL output folders and shared erosion depths."
+        )
+    export_pptx_from_folder(combined_root, pptx_basename=pptx_name)

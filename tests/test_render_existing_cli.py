@@ -62,6 +62,27 @@ class TestRenderExistingCli(unittest.TestCase):
         self.assertIn("-s", cmd)
         self.assertEqual(cmd[cmd.index("-s") + 1], t2_path)
 
+    def test_build_command_preserves_custom_panel_config(self):
+        self._touch("Processing/Preprocessed_T1/Preprocessed_main_image.nii.gz")
+        config_path = os.path.join(self.test_dir.name, "custom.yaml")
+        with open(config_path, "w", encoding="utf-8"):
+            pass
+
+        cmd = _build_command(
+            self.source_dir,
+            [
+                "--panels",
+                "custom_overlay_trio",
+                "--panel-config",
+                config_path,
+            ],
+        )
+
+        self.assertIn("custom_overlay_trio", cmd)
+        self.assertIn("--panel-config", cmd)
+        self.assertEqual(cmd[cmd.index("--panel-config") + 1], config_path)
+        self.assertFalse(render_existing_cli._uses_quant_map_panel(cmd))
+
     def test_helper_requires_panels(self):
         self._touch("Processing/Preprocessed_T1/Preprocessed_main_image.nii.gz")
         with self.assertRaises(SystemExit):

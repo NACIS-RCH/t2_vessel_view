@@ -221,6 +221,96 @@ def _collect_eroded_files(directory, pattern):
     return sorted(glob.glob(os.path.join(directory, pattern)), key=os.path.basename)
 
 
+def _available_erode_prefixes(paths):
+    """Return sorted zero-padded erosion prefixes found in NIfTI filenames."""
+    prefixes = set()
+    for path in paths:
+        match = re.match(r"^(\d+)_eroded", os.path.basename(path))
+        if match:
+            prefixes.add(match.group(1).zfill(3))
+    return sorted(prefixes, key=int)
+
+
+def _validate_custom_slice_depth(config, source_files, t2_resolved):
+    """Require the configured slice depth in every source used by the panel."""
+    required_sources = []
+    for slot in config["slots"]:
+        base = slot["base"]
+        if base in ("t1", "flair") and base not in required_sources:
+            required_sources.append(base)
+        elif base == "t2":
+            for angle in config["angles"]:
+                source = t2_resolved[angle]
+                if source not in required_sources:
+                    required_sources.append(source)
+
+    requested = config["slice_erode_prefix"]
+    missing = []
+    for source in required_sources:
+        available = _available_erode_prefixes(source_files.get(source, []))
+        if requested not in available:
+            available_text = ", ".join(available) if available else "none"
+            missing.append(
+                f"{source}: requested {requested}; available {available_text}"
+            )
+    if missing:
+        raise ValueError(
+            "custom_overlay_trio slice erosion depth is unavailable: "
+            + "; ".join(missing)
+        )
+
+
+def _fill_custom_overlay_windows(slots):
+    """Fill omitted YAML overlay min/max values from overlay image statistics."""
+    for slot in slots:
+        for overlay in slot["overlays"]:
+            if "min" in overlay and "max" in overlay:
+                continue
+            minimum, maximum = volume_rendering.compute_series_window(
+                [overlay["path"]],
+                low_pct=1.0,
+                high_pct=99.0,
+            )
+            overlay["min"] = float(minimum)
+            overlay["max"] = float(maximum)
+            print(
+                f"[WARNING] custom_overlay_trio {slot['base']}/{overlay['name']}: "
+                f"window not provided; using estimated min={minimum}, max={maximum}."
+            )
+
+
+def _custom_structural_window(base, eroded_files):
+    """Return the existing modality-specific display window for a custom slot."""
+    if base == "t1":
+        initial_window = volume_rendering.compute_series_window(
+            eroded_files,
+            low_pct=2.0,
+            high_pct=90.0,
+        )
+        return volume_rendering.refine_window_vmax_by_saturation_circles(
+            eroded_files,
+            initial_window,
+            radius_mm=1.5,
+            bright_threshold=250,
+            max_valid_circle_locations=4,
+            representative_slices=5,
+            max_images_to_check=3,
+            vmax_growth_factor=1.10,
+            max_iterations=8,
+        )
+    if base == "flair":
+        return volume_rendering.compute_series_window(
+            eroded_files,
+            low_pct=7.5,
+            high_pct=99.99,
+        )
+    return volume_rendering.compute_series_window(
+        eroded_files,
+        low_pct=0.3,
+        high_pct=99.75,
+    )
+
+
 def _validate_render_existing_inputs(requested_panels):
     """Validate that render-only mode has the existing eroded files it needs."""
     eroded_sets = {
@@ -310,6 +400,77 @@ def _run_render_outputs(requested_panels):
     t2_tra_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_tra_dir, '*eroded*t2_tra*nii.gz')
     t2_3d_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_t2_3d_dir, '*eroded*t2_3d*nii.gz')
     flair_eroded_files = _collect_eroded_files(dir_structure.eroded_nifti_flair_dir, '*eroded*flair*nii.gz')
+
+    # Validate the custom panel completely before any MRIcroGL render starts.
+    # Import the dependency-light YAML module lazily so CLI bootstrap is unchanged.
+    custom_config = None
+    custom_panel_config = None
+    custom_t2_resolved = {}
+    custom_t2_sag_left_files = [
+        path for path in t2_sag_eroded_files
+        if "t2_sag_left" in os.path.basename(path).lower()
+    ]
+    custom_t2_sag_right_files = [
+        path for path in t2_sag_eroded_files
+        if "t2_sag_right" in os.path.basename(path).lower()
+    ]
+    custom_t2_sag_generic_files = [
+        path for path in t2_sag_eroded_files
+        if (
+            "t2_sag_left" not in os.path.basename(path).lower()
+            and "t2_sag_right" not in os.path.basename(path).lower()
+        )
+    ]
+    custom_t2_files = {
+        "t2_sag_left": custom_t2_sag_left_files,
+        "t2_sag_right": custom_t2_sag_right_files,
+        "t2_sag_generic": custom_t2_sag_generic_files,
+        "t2_cor": t2_cor_eroded_files,
+        "t2_tra": t2_tra_eroded_files,
+        "t2_3d": t2_3d_eroded_files,
+    }
+    if "custom_trio" in needed:
+        from . import panel_config as custom_panel_config
+
+        custom_config = custom_panel_config.load_custom_overlay_trio_config(
+            commandline.args.panel_config
+        )
+        missing_bases = []
+        for slot in custom_config["slots"]:
+            if slot["base"] == "t1" and not t1_eroded_files:
+                missing_bases.append(f"slot {slot['index']} requires T1")
+            elif slot["base"] == "flair" and not flair_eroded_files:
+                missing_bases.append(f"slot {slot['index']} requires FLAIR")
+        if missing_bases:
+            raise ValueError(
+                "custom_overlay_trio cannot render: " + "; ".join(missing_bases)
+            )
+
+        if any(slot["base"] == "t2" for slot in custom_config["slots"]):
+            available_t2 = [
+                source for source, files in custom_t2_files.items() if files
+            ]
+            custom_t2_resolved = custom_panel_config.resolve_t2_sources(
+                custom_config["angles"],
+                available_t2,
+            )
+        custom_source_files = {
+            "t1": t1_eroded_files,
+            "flair": flair_eroded_files,
+            **custom_t2_files,
+        }
+        _validate_custom_slice_depth(
+            custom_config,
+            custom_source_files,
+            custom_t2_resolved,
+        )
+        _fill_custom_overlay_windows(custom_config["slots"])
+        print(
+            f"[INFO] custom_overlay_trio validated: "
+            f"{len(custom_config['slots'])} slot(s), "
+            f"angles={custom_config['angles']}, "
+            f"slice erosion prefix={custom_config['slice_erode_prefix']}."
+        )
 
     standard_angles = [
         [90, 0, 'left'], [270, 0, 'right'], [180, 0, 'anterior'], [0, 0, 'posterior'],
@@ -551,6 +712,7 @@ def _run_render_outputs(requested_panels):
                 angle_to_t2_source=angle_to_t2_source,
                 qmm_angles=requested_qmm_angles,
                 overlay_names=overlay_names,
+                overlay_specs=overlay_specs,
                 add_orientation_labels=True,
                 background_rgb=[0, 0, 0],
                 threshold=2,
@@ -558,6 +720,91 @@ def _run_render_outputs(requested_panels):
             )
         except Exception as e:
             print(f"[WARNING] quant_map_mm_panel preset skipped: {e}")
+
+    if custom_config is not None and custom_panel_config is not None:
+        custom_root = os.path.join(
+            dir_structure.renders_dir,
+            "Custom_overlay_trio",
+        )
+        custom_raw_root = os.path.join(custom_root, "raw")
+        custom_stitched_root = os.path.join(custom_root, "stitched")
+        # A clean custom output tree prevents stale angles/depths from a prior
+        # YAML config being mixed into this run.
+        if os.path.isdir(custom_root):
+            shutil.rmtree(custom_root)
+        os.makedirs(custom_raw_root, exist_ok=True)
+
+        for slot in custom_config["slots"]:
+            base = slot["base"]
+            slot_output = os.path.join(
+                custom_raw_root,
+                f"{int(slot['index']):02d}_{base}",
+            )
+            if base == "t2":
+                groups = custom_panel_config.group_angles_by_t2_source(
+                    custom_config["angles"],
+                    custom_t2_resolved,
+                )
+                print(
+                    f"[INFO] custom_overlay_trio slot {slot['index']} "
+                    f"(t2): source groups={groups}."
+                )
+                for group in groups:
+                    source = group["source"]
+                    source_files = custom_t2_files[source]
+                    print(
+                        f"[INFO] Rendering slot {slot['index']} with {source}: "
+                        f"{len(source_files)} erosion file(s), "
+                        f"angles={group['angles']}."
+                    )
+                    volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                        source_files,
+                        slot_output,
+                        overlays=slot["overlays"],
+                        window=_custom_structural_window("t2", source_files),
+                        main_erode_prefix=custom_config["slice_erode_prefix"],
+                        mricrogl_path=mricrogl_exec,
+                        angles=custom_panel_config.angle_rows(group["angles"]),
+                        slice_all_depths=False,
+                        save_structural_outputs=False,
+                        save_overlay_outputs=True,
+                        timeout_s=3600,
+                    )
+            else:
+                source_files = (
+                    t1_eroded_files if base == "t1" else flair_eroded_files
+                )
+                print(
+                    f"[INFO] Rendering custom_overlay_trio slot {slot['index']} "
+                    f"({base}): {len(source_files)} erosion file(s), "
+                    f"angles={custom_config['angles']}."
+                )
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    source_files,
+                    slot_output,
+                    overlays=slot["overlays"],
+                    window=_custom_structural_window(base, source_files),
+                    main_erode_prefix=custom_config["slice_erode_prefix"],
+                    mricrogl_path=mricrogl_exec,
+                    angles=custom_panel_config.angle_rows(
+                        custom_config["angles"]
+                    ),
+                    slice_all_depths=False,
+                    save_structural_outputs=False,
+                    save_overlay_outputs=True,
+                    timeout_s=3600,
+                )
+
+        png_postprocess.run_preset_custom_overlay_trio(
+            raw_root=custom_raw_root,
+            stitched_root=custom_stitched_root,
+            slots=custom_config["slots"],
+            angles=custom_config["angles"],
+            add_orientation_labels=True,
+            background_rgb=[0, 0, 0],
+            threshold=2,
+            pptx_name="custom_overlay_trio",
+        )
 
     has_additional_modalities = any([
         bool(flair_eroded_files),

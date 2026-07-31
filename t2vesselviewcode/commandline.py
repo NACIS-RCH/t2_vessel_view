@@ -303,6 +303,7 @@ parser.add_argument('--panels',
                 'multimodal_overview',
                 'multimodal_overview_other_angles',
                 'quant_map_mm_panel',
+                'custom_overlay_trio',
                 'standard',
                 'all',
             ],
@@ -311,12 +312,23 @@ parser.add_argument('--panels',
             help=(
                 'Display panels to generate after erosion (default: none). '
                 'IDs: t1_overview, t1_overlay_overview, t2_overview, multimodal_overview, '
-                'multimodal_overview_other_angles, quant_map_mm_panel. '
-                'Aliases: standard (structural T1/T2/multimodal), all. '
+                'multimodal_overview_other_angles, quant_map_mm_panel, custom_overlay_trio. '
+                'Aliases: standard (structural T1/T2/multimodal), all '
+                '(excludes custom_overlay_trio). '
                 'Omit --panels on the main command for preprocess/erode only; '
                 'use t2vv_render_existing --panels ... to generate displays later.'
             ),
             dest='panels')
+
+parser.add_argument('--panel-config',
+            metavar='panel_config',
+            type=str,
+            action='store',
+            help=(
+                'YAML config file required by --panels custom_overlay_trio. '
+                'See examples/custom_overlay_trio.yaml.'
+            ),
+            dest='panel_config')
 
 parser.add_argument('--panel-preset',
             metavar='panel_preset',
@@ -472,6 +484,15 @@ if "t1_overlay_overview" in args.resolved_panels:
             '--panels t1_overlay_overview requires at least one overlay path '
             '(--overlay1-path through --overlay4-path).'
         )
+
+if "custom_overlay_trio" in args.resolved_panels:
+    if not args.panel_config:
+        parser.error(
+            '--panels custom_overlay_trio requires --panel-config PATH.yaml '
+            '(see examples/custom_overlay_trio.yaml).'
+        )
+    if not os.path.isfile(args.panel_config):
+        parser.error(f'--panel-config not found: {args.panel_config}')
 
 if args.export_overlay_dicom and "t1_overlay_overview" not in args.resolved_panels:
     parser.error(

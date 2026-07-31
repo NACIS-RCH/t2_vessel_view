@@ -1,0 +1,66 @@
+# Custom overlay panel for t2_vessel_view.
+#
+# Run from an existing T2VesselView output:
+#   t2vv_render_existing --source-dir /path/to/T2VesselView \
+#     --panels custom_overlay_trio \
+#     --panel-config /path/to/custom_overlay_trio.yaml
+#
+# Notes:
+# - Choose 2 to 4 slots. Repeating a base is allowed.
+# - Bases are t1, t2, or flair.
+# - Overlays are optional per slot. A slot with only "base" displays the
+#   structural image without a colorbar.
+# - base: t2 automatically selects the best available T2 acquisition:
+#     left/right: matching-side sagittal, generic sagittal, 3D, then transverse
+#     anterior/posterior: coronal, then 3D
+#     superior/inferior: transverse, then 3D
+#     surgical/ATO: matching-side sagittal, generic sagittal, then 3D
+#   An opposite-side sagittal acquisition is never used as a fallback.
+# - Overlay images must already be aligned with the structural images.
+# - Relative overlay paths are resolved relative to this YAML file.
+# - opacity is an MRIcroGL integer from 0 to 100.
+# - min and max are optional overlay window values. Provide both together with
+#   max greater than min. If omitted, they are estimated with a warning.
+# - Exact 0/1 binary overlays are detected automatically. Their legend uses one
+#   solid swatch matching foreground value 1, without min/max endpoint labels.
+# - Composite erosion views are rendered at every available depth.
+# - Composite slice sweeps are rendered only at slice_erode_depth.
+# - Use integer 35 for filename prefix 035 (3.5 mm); do not use unquoted 035.
+
+slice_erode_depth: 35
+
+angles:
+  - superior
+  - left
+  # - surg_left_lat
+  # - surg_right_lat
+  # - surg_left_ato
+  # - surg_right_ato
+
+slots:
+  - base: t1
+    overlays:
+      - path: ./pet.nii.gz
+        color: jet
+        name: PET
+        opacity: 60
+        min: 0
+        max: 10
+
+  - base: t2
+    overlays:
+      - path: ./fmri.nii.gz
+        color: hot
+        name: fMRI
+        opacity: 50
+        min: 0
+        max: 5
+      - path: ./tract.nii.gz
+        color: green
+        name: Tract
+        opacity: 80
+        min: 0
+        max: 1
+
+  # Structural-only slot: omit "overlays" when none are wanted.
+  - base: flair

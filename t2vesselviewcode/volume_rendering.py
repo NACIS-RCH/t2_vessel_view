@@ -784,6 +784,26 @@ def render_volume_and_save_pngs_mricrogl(
             pass
 
 
+def _normalize_slice_angle_rows(angles=None):
+    """Return validated camera/clip rows, preserving legacy QMM defaults."""
+    if angles is None:
+        return [
+            ["left", 90, 0, 270, 0],
+            ["right", 270, 0, 90, 0],
+            ["anterior", 180, 0, 180, 0],
+            ["posterior", 0, -10, 0, -10],
+            ["superior", 0, 90, 0, 90],
+            ["inferior", 180, -90, 0, -90],
+        ]
+    rows = [list(row) for row in angles]
+    if any(len(row) != 5 for row in rows):
+        raise ValueError(
+            "Each slice angle must contain "
+            "[label, brain_az, brain_el, clip_az, clip_el]."
+        )
+    return rows
+
+
 def render_quant_map_mm_panel_slices_mricrogl(
     nifti_paths,
     output_dir,
@@ -797,8 +817,24 @@ def render_quant_map_mm_panel_slices_mricrogl(
     slice_z_end=95,
     slice_h_divisor=100.0,
     sagittal_slice_end_fraction=0.52,
+    angles=None,
+    slice_all_depths=False,
+    save_structural_outputs=True,
+    save_overlay_outputs=True,
+    timeout_s=600,
 ):
-    """Render raw slice and erosion screenshots for quant_map_mm_panel workflow."""
+    """Render raw slice and erosion screenshots for QMM/custom workflows.
+
+    The defaults preserve quant_map_mm_panel behavior: six cardinal views and
+    slice sweeps only for ``main_erode_prefix``. Custom panels can supply
+    camera/clip rows and select which structural/composite output families
+    are written.
+    """
+    if not bool(save_structural_outputs) and not bool(save_overlay_outputs):
+        raise ValueError(
+            "At least one of save_structural_outputs or "
+            "save_overlay_outputs must be True."
+        )
     if not nifti_paths:
         return
 
@@ -812,14 +848,7 @@ def render_quant_map_mm_panel_slices_mricrogl(
     mricrogl_path = resolve_mricrogl_executable(mricrogl_path)
 
     # [label, brain_az, brain_el, clip_az, clip_el]
-    slice_angles = [
-        ["left", 90, 0, 270, 0],
-        ["right", 270, 0, 90, 0],
-        ["anterior", 180, 0, 180, 0],
-        ["posterior", 0, -10, 0, -10],
-        ["superior", 0, 90, 0, 90],
-        ["inferior", 180, -90, 0, -90],
-    ]
+    slice_angles = _normalize_slice_angle_rows(angles)
 
     tmp_root = tempfile.mkdtemp(prefix='t2vv_mricrogl_qmm_')
     tmp_imgs = []
@@ -855,6 +884,15 @@ def render_quant_map_mm_panel_slices_mricrogl(
         script_text = script_text.replace('__SLICE_Z_END__', str(int(slice_z_end)))
         script_text = script_text.replace('__SLICE_H_DIVISOR__', str(float(slice_h_divisor)))
         script_text = script_text.replace('__SAGITTAL_SLICE_END_FRACTION__', str(float(sagittal_slice_end_fraction)))
+        script_text = script_text.replace('__SLICE_ALL_DEPTHS__', repr(bool(slice_all_depths)))
+        script_text = script_text.replace(
+            '__SAVE_STRUCTURAL_OUTPUTS__',
+            repr(bool(save_structural_outputs)),
+        )
+        script_text = script_text.replace(
+            '__SAVE_OVERLAY_OUTPUTS__',
+            repr(bool(save_overlay_outputs)),
+        )
         script_text = script_text.replace('__SLICE_ANGLES__', slice_angles_literal)
 
         tmp_script = os.path.join(tmp_root, 'mricrogl_qmm_slices.py')
@@ -864,7 +902,13 @@ def render_quant_map_mm_panel_slices_mricrogl(
         _configure_mricrogl_ini_preferences()
         cmd = [mricrogl_path, '-s', tmp_script]
         try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=600)
+            proc = subprocess.run(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=int(timeout_s),
+            )
             if proc.returncode != 0:
                 raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
         except subprocess.TimeoutExpired as e:
@@ -872,7 +916,10 @@ def render_quant_map_mm_panel_slices_mricrogl(
                 subprocess.run(['pkill', '-f', mricrogl_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             except Exception:
                 pass
-            print(f"[WARNING] MRIcroGL slice render timed out after 600s. Proceeding with partial outputs.\n{e}")
+            print(
+                f"[WARNING] MRIcroGL slice render timed out after {int(timeout_s)}s. "
+                f"Proceeding with partial outputs.\n{e}"
+            )
 
         print(f"[INFO] MRIcroGL quant_map_mm_panel raw screenshots saved under: {output_dir}")
     finally:

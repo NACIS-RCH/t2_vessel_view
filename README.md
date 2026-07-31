@@ -112,7 +112,25 @@ t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
   --overlay1-name PET \
   --overlay1-color green \
   --overlay1-min 0 --overlay1-max 5
+
+# YAML-configured 2–4 column custom overlay panel
+t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
+  --panels custom_overlay_trio \
+  --panel-config /path/to/custom_overlay_trio.yaml
 ```
+
+Copy `examples/custom_overlay_trio.yaml` as a starting point. Custom panel
+overlays must already be aligned with the structural images. The YAML supports
+T1, automatically selected T2, and FLAIR bases; cardinal/surgical views; overlay
+colour, opacity and window values; all erosion depths; and slice sweeps. Overlays
+are optional for each slot, so a slot can display only its structural base.
+Custom erosion composites are saved at every depth; slice sweeps use the single
+YAML `slice_erode_depth` (default `35`, corresponding to prefix `035`). Exact
+0/1 binary overlays are detected automatically and shown in legends as a solid
+foreground-value colour swatch without numeric endpoints. For left/right
+sagittal, surgical and ATO views, custom T2 selection prefers the matching-side
+sagittal acquisition, then a generic sagittal acquisition; it never substitutes
+the opposite-side sagittal acquisition.
 
 ### One-shot: preprocess and panels in a single command
 ```bash

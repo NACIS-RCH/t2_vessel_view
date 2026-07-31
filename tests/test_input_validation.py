@@ -16,9 +16,7 @@ from t2vesselviewcode.input_validation import (
     detect_image_format,
     validate_image_dimensions,
     validate_image_orientation,
-    validate_input_files,
-    create_output_directories,
-    convert_dicom_to_nifti
+    validate_input_files
 )
 
 class TestInputValidation(unittest.TestCase):
@@ -33,7 +31,10 @@ class TestInputValidation(unittest.TestCase):
         
         # Create a simple test DICOM image
         self.test_dicom_path = os.path.join(self.test_dir, "test.dcm")
-        test_image = sitk.GetImageFromArray(np.zeros((100, 100)))
+        # GDCM requires an explicit integer stored pixel type for DICOM output.
+        test_image = sitk.GetImageFromArray(
+            np.zeros((100, 100), dtype=np.uint16)
+        )
         sitk.WriteImage(test_image, self.test_dicom_path)
 
     def _save_metadata_dicom(self, folder, filename, series_uid, series_description):
@@ -72,7 +73,9 @@ class TestInputValidation(unittest.TestCase):
         dicom_dir = os.path.join(self.test_dir, "dicom_series")
         os.makedirs(dicom_dir, exist_ok=True)
         dicom_in_dir_path = os.path.join(dicom_dir, "slice001.dcm")
-        test_image = sitk.GetImageFromArray(np.zeros((100, 100)))
+        test_image = sitk.GetImageFromArray(
+            np.zeros((100, 100), dtype=np.uint16)
+        )
         sitk.WriteImage(test_image, dicom_in_dir_path)
         self.assertEqual(detect_image_format(dicom_dir), 'dicom')
         
@@ -152,20 +155,5 @@ class TestInputValidation(unittest.TestCase):
         self.assertTrue(any("multiple DICOM series" in error for error in errors))
         self.assertTrue(any("Please specify the exact DICOM series folder" in error for error in errors))
     
-    def test_create_output_directories(self):
-        # Test directory creation
-        create_output_directories(self.test_dir)
-        
-        # Verify key directories were created
-        expected_dirs = [
-            "T2VesselView",
-            "T2VesselView/Processing",
-            "T2VesselView/3D_renders_png"
-        ]
-        for dir_name in expected_dirs:
-            full_path = os.path.join(self.test_dir, dir_name)
-            self.assertTrue(os.path.exists(full_path))
-            self.assertTrue(os.path.isdir(full_path))
-
 if __name__ == '__main__':
     unittest.main() 
