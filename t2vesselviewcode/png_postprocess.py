@@ -453,6 +453,60 @@ def _measure_text(draw: ImageDraw.Draw, text: str, font) -> Tuple[int, int]:
         return draw.textsize(text, font=font)
 
 
+def _layout_colorbar_name(
+    draw: ImageDraw.Draw,
+    overlay_name: str,
+    font,
+    max_width: int,
+    line_gap: int,
+) -> Dict:
+    """Lay out a colorbar name on one or two measured, centered lines."""
+    display_name = " ".join(str(overlay_name).replace("_", " ").split())
+    full_size = _measure_text(draw, display_name, font)
+    if full_size[0] <= max_width:
+        return {
+            "lines": [display_name],
+            "line_sizes": [full_size],
+            "width": full_size[0],
+            "height": full_size[1],
+        }
+
+    words = display_name.split()
+    candidates = []
+    for split_index in range(1, len(words)):
+        lines = (
+            " ".join(words[:split_index]),
+            " ".join(words[split_index:]),
+        )
+        sizes = [_measure_text(draw, line, font) for line in lines]
+        widths = [size[0] for size in sizes]
+        candidates.append(
+            (
+                max(widths),
+                abs(widths[0] - widths[1]),
+                lines,
+                sizes,
+            )
+        )
+    if not candidates:
+        return {
+            "lines": [display_name],
+            "line_sizes": [full_size],
+            "width": full_size[0],
+            "height": full_size[1],
+        }
+
+    fitting = [candidate for candidate in candidates if candidate[0] <= max_width]
+    pool = fitting or candidates
+    best = min(pool, key=lambda candidate: (candidate[0], candidate[1]))
+    return {
+        "lines": list(best[2]),
+        "line_sizes": best[3],
+        "width": best[0],
+        "height": sum(size[1] for size in best[3]) + line_gap,
+    }
+
+
 def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs) -> None:
     """Add compact stacked overlay colorbar legends to a stitched PNG.
 
@@ -473,8 +527,8 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
 
     # Use a slightly smaller legend when several overlays are present.
     multiple_overlays = len(overlay_specs) > 1
-    font_size = max(10, int(h * (0.014 if multiple_overlays else 0.018)))
-    value_font_size = max(9, int(h * (0.012 if multiple_overlays else 0.016)))
+    font_size = max(12, int(h * (0.020 if multiple_overlays else 0.023)))
+    value_font_size = max(10, int(h * (0.015 if multiple_overlays else 0.018)))
     name_font = _load_annotation_font(font_size)
     value_font = _load_annotation_font(value_font_size)
 
@@ -482,6 +536,11 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
     gap = max(4, int(min(w, h) * 0.008))
     entry_gap = max(8, int(min(w, h) * 0.012))
     name_to_bar_gap = gap + 3
+    name_line_gap = max(2, int(font_size * 0.18))
+    name_max_width = min(
+        max(80, int(w * 0.28)),
+        max(1, w - (2 * margin)),
+    )
     bar_width = max(6, int(w * 0.006))
     bar_height = max(28, int(h * (0.055 if multiple_overlays else 0.08)))
 
@@ -534,7 +593,15 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             continue
 
         # Measure text so each stacked legend entry can align consistently.
-        name_w, name_h = _measure_text(draw, overlay_name, name_font)
+        name_layout = _layout_colorbar_name(
+            draw,
+            overlay_name,
+            name_font,
+            name_max_width,
+            name_line_gap,
+        )
+        name_w = name_layout["width"]
+        name_h = name_layout["height"]
         if is_binary:
             max_w = max_h = min_w = min_h = 0
             value_width = 0
@@ -547,7 +614,8 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
         global_block_width = max(global_block_width, entry_width)
         entries.append({
             "colorbar": colorbar,
-            "name": overlay_name,
+            "name_lines": name_layout["lines"],
+            "name_line_sizes": name_layout["line_sizes"],
             "min": min_text,
             "max": max_text,
             "name_w": name_w,
@@ -563,7 +631,6 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
     block_x = max(margin, w - margin - global_block_width)
     current_y = margin
     for entry_idx, entry in enumerate(entries):
-        name_x = block_x + max(0, (global_block_width - entry["name_w"]) // 2)
         name_y = current_y
         bar_x = block_x + global_value_width + gap
         bar_y = name_y + entry["name_h"] + name_to_bar_gap
@@ -576,7 +643,22 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
         )
 
         # Draw all text with a black outline so it remains readable over image content.
-        _draw_text_with_outline(draw, (name_x, name_y), entry["name"], font=name_font)
+        current_name_y = name_y
+        for line, (line_width, line_height) in zip(
+            entry["name_lines"],
+            entry["name_line_sizes"],
+        ):
+            name_x = block_x + max(
+                0,
+                (global_block_width - line_width) // 2,
+            )
+            _draw_text_with_outline(
+                draw,
+                (name_x, current_name_y),
+                line,
+                font=name_font,
+            )
+            current_name_y += line_height + name_line_gap
         if not entry["is_binary"]:
             _draw_text_with_outline(
                 draw,
