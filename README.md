@@ -148,6 +148,32 @@ rows:
 If row lengths differ, both rows are left-aligned and the wider row determines
 the final panel width.
 
+### Brand-new display and slice angles
+
+Add new (non-preset) camera directions with repeatable CLI options:
+
+```bash
+t2vv_render_existing \
+  --source-dir /path/to/T2VesselView \
+  --panels custom_overlay_trio \
+  --panel-config /path/to/custom_overlay_trio.yaml \
+  --display-angle my_view 240 170 \
+  --slice-plane my_view 120 0
+```
+
+`--display-angle LABEL AZ EL` is always required. A matching `--slice-plane`
+is required when QMM or the custom YAML panel is requested; display-only angles
+are allowed for standard raw volume renders. New labels are appended
+automatically and cannot override preset names. Standard stitched overview
+layouts remain unchanged, so their new angles are raw `by_angle/LABEL` outputs.
+
+For a custom angle’s T2 source, display azimuth/elevation is compared with the
+existing camera directions using spherical angular distance. An unambiguous
+nearest direction inherits its normal T2/laterality rule. Exact ties prefer T2
+3D, then use the documented data-aware sagittal/transverse/coronal rules; an
+opposite-side unilateral sagittal image is never substituted. Slice-plane
+values do not affect T2 source selection.
+
 ### Named extra T1-like structural images
 
 Repeat `--extra-image NAME=PATH` to preprocess additional T1-like images such

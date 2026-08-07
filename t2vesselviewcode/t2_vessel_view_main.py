@@ -28,6 +28,7 @@ from . import volume_rendering
 from . import png_postprocess
 from . import overlay_colors
 from . import extra_images
+from . import custom_angles
 
 
 def run_dependency_preflight():
@@ -314,6 +315,44 @@ def _custom_structural_window(base, eroded_files):
     )
 
 
+def _slice_rows_for_labels(labels, panel_config_module, custom_specs):
+    """Return existing/custom five-value angle rows in requested label order."""
+    custom_by_label = {
+        spec["label"]: spec for spec in custom_specs or []
+    }
+    rows = []
+    for label in labels:
+        if label in panel_config_module.ANGLE_SPECS:
+            rows.append(list(panel_config_module.ANGLE_SPECS[label]))
+        elif label in custom_by_label:
+            rows.extend(custom_angles.slice_rows([custom_by_label[label]]))
+        else:
+            raise ValueError(f"No display/slice definition for angle '{label}'.")
+    return rows
+
+
+def _infer_custom_t2_sources(custom_specs, available_sources, panel_module):
+    """Infer and report T2 sources for ordered CLI custom angle specs."""
+    resolved = {}
+    details = {}
+    for spec in custom_specs or []:
+        result = panel_module.infer_custom_angle_t2_source(
+            spec["brain_az"],
+            spec["brain_el"],
+            available_sources,
+        )
+        label = spec["label"]
+        resolved[label] = result["source"]
+        details[label] = result
+        print(
+            f"[INFO] Custom angle '{label}' inferred T2 source "
+            f"{result['source']} from nearest label(s) "
+            f"{result['labels']} at {result['distance']:.6f} degrees"
+            f"{' (ambiguous)' if result['ambiguous'] else ''}."
+        )
+    return resolved, details
+
+
 def _reorient_extra_images(specs):
     """Convert/reorient ordered named extra-image inputs."""
     items = []
@@ -439,6 +478,10 @@ def _run_render_outputs(requested_panels):
 
     print(f"[INFO] Requested panels: {', '.join(sorted(requested_panels))}")
     needed = panel_registry.raw_renders_needed(requested_panels)
+    cli_custom_angles = list(
+        getattr(commandline.args, "custom_angles", []) or []
+    )
+    cli_custom_display_rows = custom_angles.display_rows(cli_custom_angles)
     # qmm overlay defaults (electric_blue / opacity) still keyed off this name
     panel_preset = "quant_map_mm_panel" if "quant_map_mm_panel" in requested_panels else None
 
@@ -470,6 +513,9 @@ def _run_render_outputs(requested_panels):
     # Import the dependency-light YAML module lazily so CLI bootstrap is unchanged.
     custom_config = None
     custom_panel_config = None
+    angle_panel_config = None
+    if cli_custom_angles:
+        from . import panel_config as angle_panel_config
     custom_t2_resolved = {}
     custom_t2_sag_left_files = [
         path for path in t2_sag_eroded_files
@@ -495,12 +541,17 @@ def _run_render_outputs(requested_panels):
         "t2_3d": t2_3d_eroded_files,
     }
     if "custom_trio" in needed:
-        from . import panel_config as custom_panel_config
+        if angle_panel_config is None:
+            from . import panel_config as angle_panel_config
+        custom_panel_config = angle_panel_config
 
         custom_config = custom_panel_config.load_custom_overlay_trio_config(
             commandline.args.panel_config,
             extra_base_names=list(extra_eroded_files),
         )
+        for spec in cli_custom_angles:
+            if spec["label"] not in custom_config["angles"]:
+                custom_config["angles"].append(spec["label"])
         missing_bases = []
         for slot in custom_config["slots"]:
             if slot["base"] == "t1" and not t1_eroded_files:
@@ -524,10 +575,20 @@ def _run_render_outputs(requested_panels):
             available_t2 = [
                 source for source, files in custom_t2_files.items() if files
             ]
+            existing_angles = [
+                angle for angle in custom_config["angles"]
+                if angle in custom_panel_config.ANGLE_SPECS
+            ]
             custom_t2_resolved = custom_panel_config.resolve_t2_sources(
-                custom_config["angles"],
+                existing_angles,
                 available_t2,
             )
+            inferred_sources, _inference_details = _infer_custom_t2_sources(
+                cli_custom_angles,
+                available_t2,
+                custom_panel_config,
+            )
+            custom_t2_resolved.update(inferred_sources)
         custom_source_files = {
             "t1": t1_eroded_files,
             "flair": flair_eroded_files,
@@ -553,6 +614,7 @@ def _run_render_outputs(requested_panels):
         [270, 180, 'surg_left_lat'], [90, 180, 'surg_right_lat'],
         [300, 175, 'surg_left_ato'], [60, 175, 'surg_right_ato'],
     ]
+    standard_and_custom_angles = standard_angles + cli_custom_display_rows
 
     t1_window = None
     if t1_eroded_files and (needed & {"t1", "t1_overlay"}):
@@ -573,7 +635,7 @@ def _run_render_outputs(requested_panels):
         volume_rendering.render_volume_and_save_pngs_mricrogl(
             t1_eroded_files,
             dir_structure.renders_t1_dir,
-            angles=standard_angles,
+            angles=standard_and_custom_angles,
             window=t1_window,
             image_size=(1200, 1200),
             mricrogl_path=mricrogl_exec,
@@ -618,7 +680,7 @@ def _run_render_outputs(requested_panels):
                     volume_rendering.render_volume_and_save_pngs_mricrogl(
                         t1_eroded_batch,
                         dir_structure.renders_t1_overlay_dir,
-                        angles=standard_angles,
+                        angles=standard_and_custom_angles,
                         window=t1_window,
                         image_size=(1200, 1200),
                         mricrogl_path=mricrogl_exec,
@@ -683,16 +745,64 @@ def _run_render_outputs(requested_panels):
                 out_dir = os.path.join(dir_structure.renders_dir, render_folder)
                 if render_folder.startswith("T2_"):
                     out_dir = os.path.join(dir_structure.renders_t2_dir, render_folder)
+                render_angles = (
+                    standard_and_custom_angles
+                    if render_folder == "FLAIR_3D_renders"
+                    else standard_angles
+                )
                 volume_rendering.render_volume_and_save_pngs_mricrogl(
                     eroded_files,
                     out_dir,
-                    angles=standard_angles,
+                    angles=render_angles,
                     window=window,
                     image_size=(1200, 1200),
                     mricrogl_path=mricrogl_exec,
                     template_filename="mricrogl_T1_renders.py",
                     camera_distance='auto'
                 )
+
+    if (
+        "t2_flair" in needed
+        and cli_custom_angles
+        and angle_panel_config is not None
+    ):
+        available_t2 = [
+            source for source, files in custom_t2_files.items() if files
+        ]
+        inferred_sources, _details = _infer_custom_t2_sources(
+            cli_custom_angles,
+            available_t2,
+            angle_panel_config,
+        )
+        output_folders = {
+            "t2_sag_left": "T2_Sag_3D_renders",
+            "t2_sag_right": "T2_Sag_3D_renders",
+            "t2_sag_generic": "T2_Sag_3D_renders",
+            "t2_cor": "T2_Cor_3D_renders",
+            "t2_tra": "T2_Tra_3D_renders",
+            "t2_3d": "T2_3D_3D_renders",
+        }
+        grouped_specs = {}
+        for spec in cli_custom_angles:
+            grouped_specs.setdefault(
+                inferred_sources[spec["label"]],
+                [],
+            ).append(spec)
+        for source, specs in grouped_specs.items():
+            source_files = custom_t2_files[source]
+            volume_rendering.render_volume_and_save_pngs_mricrogl(
+                source_files,
+                os.path.join(
+                    dir_structure.renders_t2_dir,
+                    output_folders[source],
+                ),
+                angles=custom_angles.display_rows(specs),
+                window=_custom_structural_window("t2", source_files),
+                image_size=(1200, 1200),
+                mricrogl_path=mricrogl_exec,
+                template_filename="mricrogl_T1_renders.py",
+                camera_distance='auto',
+            )
 
     if "qmm" in needed:
         try:
@@ -763,8 +873,101 @@ def _run_render_outputs(requested_panels):
                         main_erode_prefix=main_prefix,
                         mricrogl_path=mricrogl_exec
                     )
+            qmm_custom_t2_source_map = {}
+            if cli_custom_angles and angle_panel_config is not None:
+                custom_slice_rows = custom_angles.slice_rows(cli_custom_angles)
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    t1_subset,
+                    os.path.join(dir_structure.renders_qmm_raw_dir, "T1"),
+                    overlays=qmm_t1_overlays,
+                    window=t1_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec,
+                    angles=custom_slice_rows,
+                )
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    flair_subset,
+                    os.path.join(dir_structure.renders_qmm_raw_dir, "FLAIR"),
+                    overlays=qmm_non_t1_overlays,
+                    window=flair_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec,
+                    angles=custom_slice_rows,
+                )
+                qmm_sag_left = [
+                    path for path in t2_sag_subset
+                    if "t2_sag_left" in os.path.basename(path).lower()
+                ]
+                qmm_sag_right = [
+                    path for path in t2_sag_subset
+                    if "t2_sag_right" in os.path.basename(path).lower()
+                ]
+                qmm_sag_generic = [
+                    path for path in t2_sag_subset
+                    if (
+                        "t2_sag_left" not in os.path.basename(path).lower()
+                        and "t2_sag_right" not in os.path.basename(path).lower()
+                    )
+                ]
+                qmm_source_files = {
+                    "t2_sag_left": qmm_sag_left,
+                    "t2_sag_right": qmm_sag_right,
+                    "t2_sag_generic": qmm_sag_generic,
+                    "t2_cor": t2_cor_subset,
+                    "t2_tra": t2_tra_subset,
+                    "t2_3d": t2_3d_subset,
+                }
+                available_qmm_t2 = [
+                    source for source, paths in qmm_source_files.items()
+                    if paths
+                ]
+                inferred_qmm, _qmm_details = _infer_custom_t2_sources(
+                    cli_custom_angles,
+                    available_qmm_t2,
+                    angle_panel_config,
+                )
+                qmm_folder_for_source = {
+                    "t2_sag_left": "T2_sag",
+                    "t2_sag_right": "T2_sag",
+                    "t2_sag_generic": "T2_sag",
+                    "t2_cor": "T2_cor",
+                    "t2_tra": "T2_tra",
+                    "t2_3d": "T2_3d",
+                }
+                grouped_custom_qmm = {}
+                custom_spec_by_label = {
+                    spec["label"]: spec for spec in cli_custom_angles
+                }
+                for label, source in inferred_qmm.items():
+                    grouped_custom_qmm.setdefault(source, []).append(
+                        custom_spec_by_label[label]
+                    )
+                    qmm_custom_t2_source_map[label] = (
+                        qmm_folder_for_source[source]
+                    )
+                for source, specs in grouped_custom_qmm.items():
+                    source_files = qmm_source_files[source]
+                    volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                        source_files,
+                        os.path.join(
+                            dir_structure.renders_qmm_raw_dir,
+                            qmm_folder_for_source[source],
+                        ),
+                        overlays=qmm_non_t1_overlays,
+                        window=_custom_structural_window(
+                            "t2",
+                            source_files,
+                        ),
+                        main_erode_prefix=main_prefix,
+                        mricrogl_path=mricrogl_exec,
+                        angles=custom_angles.slice_rows(specs),
+                    )
             requested_qmm_angles = getattr(commandline.args, "qmm_angles", None) or [
                 "left", "right", "anterior", "posterior", "superior", "inferior"
+            ]
+            requested_qmm_angles = list(requested_qmm_angles) + [
+                spec["label"] for spec in cli_custom_angles
+                if spec["label"] not in requested_qmm_angles
             ]
             angle_to_t2_source = {}
             if t2_sag_subset:
@@ -782,6 +985,7 @@ def _run_render_outputs(requested_panels):
             for ang in ("left", "right"):
                 if ang in requested_qmm_angles and ang not in angle_to_t2_source and t2_tra_subset:
                     angle_to_t2_source[ang] = "T2_tra"
+            angle_to_t2_source.update(qmm_custom_t2_source_map)
             png_postprocess.run_preset_quant_map_mm_panel(
                 raw_root=dir_structure.renders_qmm_raw_dir,
                 angle_to_t2_source=angle_to_t2_source,
@@ -839,7 +1043,11 @@ def _run_render_outputs(requested_panels):
                         window=_custom_structural_window("t2", source_files),
                         main_erode_prefix=custom_config["slice_erode_prefix"],
                         mricrogl_path=mricrogl_exec,
-                        angles=custom_panel_config.angle_rows(group["angles"]),
+                        angles=_slice_rows_for_labels(
+                            group["angles"],
+                            custom_panel_config,
+                            cli_custom_angles,
+                        ),
                         slice_all_depths=False,
                         save_structural_outputs=False,
                         save_overlay_outputs=True,
@@ -867,8 +1075,10 @@ def _run_render_outputs(requested_panels):
                     window=_custom_structural_window(window_base, source_files),
                     main_erode_prefix=custom_config["slice_erode_prefix"],
                     mricrogl_path=mricrogl_exec,
-                    angles=custom_panel_config.angle_rows(
-                        custom_config["angles"]
+                    angles=_slice_rows_for_labels(
+                        custom_config["angles"],
+                        custom_panel_config,
+                        cli_custom_angles,
                     ),
                     slice_all_depths=False,
                     save_structural_outputs=False,

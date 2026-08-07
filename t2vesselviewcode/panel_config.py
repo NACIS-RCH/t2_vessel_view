@@ -6,6 +6,7 @@ YAML feature from changing the package's existing CLI import order.
 """
 
 import os
+import math
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -59,6 +60,20 @@ T2_CANDIDATES_BY_ANGLE = {
     "surg_right_ato": ("t2_sag_right", "t2_sag_generic", "t2_3d"),
 }
 
+ANGLE_T2_FAMILY = {
+    "left": "sag_left",
+    "right": "sag_right",
+    "anterior": "cor",
+    "posterior": "cor",
+    "superior": "tra",
+    "inferior": "tra",
+    "surg_left_lat": "sag_left",
+    "surg_right_lat": "sag_right",
+    "surg_left_ato": "sag_left",
+    "surg_right_ato": "sag_right",
+}
+EXACT_ANGLE_TIE_TOLERANCE_DEGREES = 1e-9
+
 
 def parse_slice_erode_depth(value: Any = None) -> Dict[str, Any]:
     """Validate a YAML slice depth and return integer plus padded prefix.
@@ -97,6 +112,163 @@ def angle_rows(angles: List[str]) -> List[List[Any]]:
             raise ValueError(f"Unknown angle: {angle}")
         rows.append(list(ANGLE_SPECS[key]))
     return rows
+
+
+def viewing_direction(azimuth, elevation) -> List[float]:
+    """Convert MRIcroGL display angles to a spherical unit direction."""
+    azimuth_radians = math.radians(float(azimuth))
+    elevation_radians = math.radians(float(elevation))
+    cos_elevation = math.cos(elevation_radians)
+    return [
+        cos_elevation * math.cos(azimuth_radians),
+        cos_elevation * math.sin(azimuth_radians),
+        math.sin(elevation_radians),
+    ]
+
+
+def angular_distance_degrees(first, second) -> float:
+    """Return spherical angular distance between two unit directions."""
+    dot = sum(a * b for a, b in zip(first, second))
+    dot = max(-1.0, min(1.0, dot))
+    return math.degrees(math.acos(dot))
+
+
+def nearest_angle_families(brain_az, brain_el) -> Dict[str, Any]:
+    """Return nearest existing T2 families for a new display direction."""
+    custom_direction = viewing_direction(brain_az, brain_el)
+    records = []
+    for label, row in ANGLE_SPECS.items():
+        direction = viewing_direction(row[1], row[2])
+        records.append({
+            "label": label,
+            "family": ANGLE_T2_FAMILY[label],
+            "distance": angular_distance_degrees(
+                custom_direction,
+                direction,
+            ),
+        })
+    minimum = min(record["distance"] for record in records)
+    tied_records = [
+        record for record in records
+        if abs(record["distance"] - minimum)
+        <= EXACT_ANGLE_TIE_TOLERANCE_DEGREES
+    ]
+    families = []
+    representatives = {}
+    for record in tied_records:
+        family = record["family"]
+        if family not in representatives:
+            families.append(family)
+            representatives[family] = record["label"]
+    return {
+        "distance": minimum,
+        "families": families,
+        "representatives": representatives,
+        "labels": [record["label"] for record in tied_records],
+    }
+
+
+def _first_available(candidates, available):
+    """Return the first candidate present in an available-source set."""
+    return next(
+        (candidate for candidate in candidates if candidate in available),
+        None,
+    )
+
+
+def infer_custom_angle_t2_source(
+    brain_az,
+    brain_el,
+    available_sources: List[str],
+) -> Dict[str, Any]:
+    """Infer one T2 source using nearest direction and exact-tie rules."""
+    available = {str(source).strip().lower() for source in available_sources}
+    nearest = nearest_angle_families(brain_az, brain_el)
+    families = list(nearest["families"])
+
+    if len(families) == 1:
+        representative = nearest["representatives"][families[0]]
+        candidates = t2_candidates_for_angle(representative)
+        source = _first_available(candidates, available)
+        if source is None:
+            raise ValueError(
+                "No usable T2 source for nearest angle "
+                f"'{representative}' (tried: {', '.join(candidates)})."
+            )
+        return {
+            **nearest,
+            "ambiguous": False,
+            "source": source,
+            "candidates": candidates,
+        }
+
+    if "t2_3d" in available:
+        return {
+            **nearest,
+            "ambiguous": True,
+            "source": "t2_3d",
+            "candidates": ["t2_3d"],
+        }
+
+    family_set = set(families)
+    # When both sides are equally close, neither unilateral sagittal source is
+    # anatomically safe; generic sagittal is also skipped by user preference.
+    both_sag_sides = {"sag_left", "sag_right"} <= family_set
+    sagittal_candidates = []
+    if not both_sag_sides:
+        if "sag_left" in family_set:
+            sagittal_candidates = ["t2_sag_left", "t2_sag_generic"]
+        elif "sag_right" in family_set:
+            sagittal_candidates = ["t2_sag_right", "t2_sag_generic"]
+    sagittal_source = _first_available(sagittal_candidates, available)
+    transverse_source = "t2_tra" if "t2_tra" in available else None
+    coronal_source = "t2_cor" if "t2_cor" in available else None
+
+    has_sag_family = bool(
+        {"sag_left", "sag_right"} & family_set
+    ) and not both_sag_sides
+    has_tra_family = "tra" in family_set
+    has_cor_family = "cor" in family_set
+
+    ordered_sources = []
+    if has_sag_family and has_tra_family and has_cor_family:
+        ordered_sources = [
+            sagittal_source,
+            transverse_source,
+            coronal_source,
+        ]
+    elif has_sag_family and has_tra_family:
+        ordered_sources = [
+            sagittal_source,
+            transverse_source,
+            coronal_source,
+        ]
+    elif has_tra_family and has_cor_family:
+        ordered_sources = [coronal_source, transverse_source]
+    elif has_sag_family and has_cor_family:
+        ordered_sources = [sagittal_source, coronal_source]
+    else:
+        # This includes left/right sagittal ties where sagittal was disabled.
+        ordered_sources = [transverse_source, coronal_source]
+
+    source = next(
+        (candidate for candidate in ordered_sources if candidate is not None),
+        None,
+    )
+    if source is None:
+        raise ValueError(
+            "No usable T2 source for ambiguous custom angle; nearest "
+            f"families: {', '.join(families)}."
+        )
+    return {
+        **nearest,
+        "ambiguous": True,
+        "source": source,
+        "candidates": [
+            candidate for candidate in ordered_sources
+            if candidate is not None
+        ],
+    }
 
 
 def t2_candidates_for_angle(angle: str) -> List[str]:

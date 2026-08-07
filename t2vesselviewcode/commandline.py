@@ -2,6 +2,7 @@ import argparse
 import os
 
 from . import extra_images
+from . import custom_angles
 
 parser = argparse.ArgumentParser(description='A tool for generating Vessel Maps using T2-weighted MRI', 
             epilog='Version 1, Bonnie Alexander 2023')
@@ -371,6 +372,28 @@ parser.add_argument('--qmm-angles',
             help='Optional list of angles for quant_map_mm_panel. If omitted, all six are used.',
             dest='qmm_angles')
 
+parser.add_argument('--display-angle',
+            metavar=('LABEL', 'AZIMUTH', 'ELEVATION'),
+            nargs=3,
+            action='append',
+            default=[],
+            help=(
+                'Add a brand-new display direction. Repeat as needed. '
+                'Preset angle labels cannot be overridden.'
+            ),
+            dest='display_angle_records')
+
+parser.add_argument('--slice-plane',
+            metavar=('LABEL', 'AZIMUTH', 'ELEVATION'),
+            nargs=3,
+            action='append',
+            default=[],
+            help=(
+                'Add the clip plane for a matching --display-angle label. '
+                'Required for custom angles used by QMM/custom slice panels.'
+            ),
+            dest='slice_plane_records')
+
 parser.add_argument('--keep-debug-images',
             action='store_true',
             help=(
@@ -462,6 +485,18 @@ except ValueError as e:
     parser.error(str(e))
 
 args.resolved_panels = _resolved_panels
+
+try:
+    args.custom_angles = custom_angles.build_custom_angle_specs(
+        args.display_angle_records,
+        args.slice_plane_records,
+        require_slice_planes=bool(
+            args.resolved_panels
+            & {"quant_map_mm_panel", "custom_overlay_trio"}
+        ),
+    )
+except ValueError as error:
+    parser.error(str(error))
 
 if getattr(args, "panel_preset", None) == "quant_map_mm_panel":
     print(
