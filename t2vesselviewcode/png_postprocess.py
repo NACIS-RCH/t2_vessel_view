@@ -459,11 +459,12 @@ def _layout_colorbar_name(
     font,
     max_width: int,
     line_gap: int,
+    max_characters: int = 17,
 ) -> Dict:
     """Lay out a colorbar name on one or two measured, centered lines."""
     display_name = " ".join(str(overlay_name).replace("_", " ").split())
     full_size = _measure_text(draw, display_name, font)
-    if full_size[0] <= max_width:
+    if len(display_name) <= int(max_characters):
         return {
             "lines": [display_name],
             "line_sizes": [full_size],
@@ -488,16 +489,59 @@ def _layout_colorbar_name(
                 sizes,
             )
         )
-    if not candidates:
+    fitting = [
+        candidate for candidate in candidates
+        if (
+            candidate[0] <= max_width
+            and all(
+                len(line) <= int(max_characters)
+                for line in candidate[2]
+            )
+        )
+    ]
+    if fitting:
+        best = min(fitting, key=lambda candidate: (candidate[0], candidate[1]))
         return {
-            "lines": [display_name],
-            "line_sizes": [full_size],
-            "width": full_size[0],
-            "height": full_size[1],
+            "lines": list(best[2]),
+            "line_sizes": best[3],
+            "width": best[0],
+            "height": sum(size[1] for size in best[3]) + line_gap,
         }
 
-    fitting = [candidate for candidate in candidates if candidate[0] <= max_width]
-    pool = fitting or candidates
+    # If no word-boundary split fits, permit one visibly hyphenated word break.
+    hyphenated_candidates = []
+    for split_index in range(1, len(display_name)):
+        left = display_name[:split_index].rstrip()
+        right = display_name[split_index:].lstrip()
+        if not left or not right:
+            continue
+        breaks_word = (
+            not display_name[split_index - 1].isspace()
+            and not display_name[split_index].isspace()
+        )
+        first_line = left + ("-" if breaks_word else "")
+        lines = (first_line, right)
+        sizes = [_measure_text(draw, line, font) for line in lines]
+        widths = [size[0] for size in sizes]
+        hyphenated_candidates.append(
+            (
+                max(widths),
+                abs(widths[0] - widths[1]),
+                lines,
+                sizes,
+            )
+        )
+    fitting_hyphenated = [
+        candidate for candidate in hyphenated_candidates
+        if (
+            candidate[0] <= max_width
+            and all(
+                len(line) <= int(max_characters)
+                for line in candidate[2]
+            )
+        )
+    ]
+    pool = fitting_hyphenated or hyphenated_candidates or candidates
     best = min(pool, key=lambda candidate: (candidate[0], candidate[1]))
     return {
         "lines": list(best[2]),
