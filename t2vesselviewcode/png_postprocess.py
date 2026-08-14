@@ -569,11 +569,12 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             continue
 
         try:
+            entry_bar_height = bar_width if is_binary else bar_height
             if is_binary:
                 colorbar = _make_binary_clut_swatch_image(
                     color_name,
                     bar_width,
-                    bar_height,
+                    entry_bar_height,
                     overlay_spec.get("min"),
                     overlay_spec.get("max"),
                 )
@@ -623,6 +624,7 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             "max_h": max_h,
             "min_h": min_h,
             "is_binary": is_binary,
+            "bar_height": entry_bar_height,
         })
 
     if not entries:
@@ -637,7 +639,12 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
 
         img.paste(entry["colorbar"], (bar_x, bar_y))
         draw.rectangle(
-            [bar_x - 1, bar_y - 1, bar_x + bar_width, bar_y + bar_height],
+            [
+                bar_x - 1,
+                bar_y - 1,
+                bar_x + bar_width,
+                bar_y + entry["bar_height"],
+            ],
             outline=(255, 255, 255),
             width=1
         )
@@ -668,11 +675,18 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
             )
             _draw_text_with_outline(
                 draw,
-                (block_x, bar_y + bar_height - entry["min_h"] // 2),
+                (
+                    block_x,
+                    bar_y + entry["bar_height"] - entry["min_h"] // 2,
+                ),
                 entry["min"],
                 font=value_font,
             )
-        current_y = bar_y + bar_height + (entry_gap if entry_idx < len(entries) - 1 else 0)
+        current_y = (
+            bar_y
+            + entry["bar_height"]
+            + (entry_gap if entry_idx < len(entries) - 1 else 0)
+        )
 
     img.save(path_out)
 
