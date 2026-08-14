@@ -317,7 +317,7 @@ parser.add_argument('--panels',
                 'multimodal_overview',
                 'multimodal_overview_other_angles',
                 'quant_map_mm_panel',
-                'custom_overlay_trio',
+                'custom_overlay_panels',
                 'standard',
                 'all',
             ],
@@ -326,9 +326,9 @@ parser.add_argument('--panels',
             help=(
                 'Display panels to generate after erosion (default: none). '
                 'IDs: t1_overview, t1_overlay_overview, t2_overview, multimodal_overview, '
-                'multimodal_overview_other_angles, quant_map_mm_panel, custom_overlay_trio. '
+                'multimodal_overview_other_angles, quant_map_mm_panel, custom_overlay_panels. '
                 'Aliases: standard (structural T1/T2/multimodal), all '
-                '(excludes custom_overlay_trio). '
+                '(excludes custom_overlay_panels). '
                 'Omit --panels on the main command for preprocess/erode only; '
                 'use t2vv_render_existing --panels ... to generate displays later.'
             ),
@@ -339,8 +339,8 @@ parser.add_argument('--panel-config',
             type=str,
             action='store',
             help=(
-                'YAML config file required by --panels custom_overlay_trio. '
-                'See examples/custom_overlay_trio.yaml.'
+                'YAML config file required by --panels custom_overlay_panels. '
+                'See examples/custom_overlay_panels.yaml.'
             ),
             dest='panel_config')
 
@@ -492,7 +492,7 @@ try:
         args.slice_plane_records,
         require_slice_planes=bool(
             args.resolved_panels
-            & {"quant_map_mm_panel", "custom_overlay_trio"}
+            & {"quant_map_mm_panel", "custom_overlay_panels"}
         ),
     )
 except ValueError as error:
@@ -538,11 +538,11 @@ if "t1_overlay_overview" in args.resolved_panels:
             '(--overlay1-path through --overlay4-path).'
         )
 
-if "custom_overlay_trio" in args.resolved_panels:
+if "custom_overlay_panels" in args.resolved_panels:
     if not args.panel_config:
         parser.error(
-            '--panels custom_overlay_trio requires --panel-config PATH.yaml '
-            '(see examples/custom_overlay_trio.yaml).'
+            '--panels custom_overlay_panels requires --panel-config PATH.yaml '
+            '(see examples/custom_overlay_panels.yaml).'
         )
     if not os.path.isfile(args.panel_config):
         parser.error(f'--panel-config not found: {args.panel_config}')

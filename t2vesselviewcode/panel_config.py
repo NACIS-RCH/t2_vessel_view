@@ -456,11 +456,11 @@ def _normalize_slot_layout(raw: Dict[str, Any]) -> List[Dict[str, Any]]:
     return entries
 
 
-def load_custom_overlay_trio_config(
+def load_custom_overlay_panels_config(
     path: str,
     extra_base_names: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
-    """Load and validate a ``custom_overlay_trio`` YAML file.
+    """Load and validate a ``custom_overlay_panels`` YAML file.
 
     Relative overlay paths are resolved relative to the YAML file. Returned
     angles and slots preserve user order; duplicate angle labels are removed.

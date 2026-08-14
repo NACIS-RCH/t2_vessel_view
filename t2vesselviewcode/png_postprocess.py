@@ -1999,7 +1999,7 @@ def _stitch_custom_slot_rows(
         if slot.get("row", "top") == "bottom"
     ]
     if not top_lists:
-        raise ValueError("custom_overlay_trio requires at least one top-row slot.")
+        raise ValueError("custom_overlay_panels requires at least one top-row slot.")
     if bottom_lists:
         concat_two_rows(
             n,
@@ -2011,7 +2011,7 @@ def _stitch_custom_slot_rows(
         concat_one_row(n, top_lists, output_location)
 
 
-def run_preset_custom_overlay_trio(
+def run_preset_custom_overlay_panels(
     raw_root: str,
     stitched_root: str,
     slots: List[Dict],
@@ -2019,7 +2019,7 @@ def run_preset_custom_overlay_trio(
     add_orientation_labels: bool = True,
     background_rgb: Optional[List[int]] = None,
     threshold: int = 2,
-    pptx_name: str = "custom_overlay_trio",
+    pptx_name: str = "custom_overlay_panels",
 ) -> None:
     """Stitch custom overlay slots into one-row erosion and slice panels.
 
@@ -2030,7 +2030,7 @@ def run_preset_custom_overlay_trio(
     if background_rgb is None:
         background_rgb = [0, 0, 0]
     if not slots:
-        raise ValueError("custom_overlay_trio requires at least one slot.")
+        raise ValueError("custom_overlay_panels requires at least one slot.")
 
     by_angle_root = os.path.join(stitched_root, "by_angle")
     combined_root = os.path.join(stitched_root, "_combined_for_pptx")
@@ -2066,7 +2066,7 @@ def run_preset_custom_overlay_trio(
             for erosion_map in erosion_maps:
                 all_erosions.update(erosion_map.keys())
             _log_skipped_prefixes(
-                f"custom_overlay_trio erosions ({angle})",
+                f"custom_overlay_panels erosions ({angle})",
                 all_erosions,
                 common_erosions,
             )
@@ -2116,12 +2116,12 @@ def run_preset_custom_overlay_trio(
                     slide_index += 1
             else:
                 print(
-                    f"[WARNING] custom_overlay_trio: no shared erosion "
+                    f"[WARNING] custom_overlay_panels: no shared erosion "
                     f"depths for angle '{angle}'."
                 )
         else:
             print(
-                f"[WARNING] custom_overlay_trio: missing erosion folder(s) "
+                f"[WARNING] custom_overlay_panels: missing erosion folder(s) "
                 f"for angle '{angle}'."
             )
 
@@ -2144,7 +2144,7 @@ def run_preset_custom_overlay_trio(
             )
             if skipped_slices:
                 print(
-                    f"[INFO] custom_overlay_trio slices ({angle}): skipped "
+                    f"[INFO] custom_overlay_panels slices ({angle}): skipped "
                     f"keys missing in one or more slots: "
                     f"{', '.join(skipped_slices)}"
                 )
@@ -2191,18 +2191,18 @@ def run_preset_custom_overlay_trio(
                     slide_index += 1
             else:
                 print(
-                    f"[WARNING] custom_overlay_trio: no shared slice keys "
+                    f"[WARNING] custom_overlay_panels: no shared slice keys "
                     f"for angle '{angle}'."
                 )
         else:
             print(
-                f"[WARNING] custom_overlay_trio: missing slice folder(s) "
+                f"[WARNING] custom_overlay_panels: missing slice folder(s) "
                 f"for angle '{angle}'."
             )
 
     if slide_index == 0:
         raise ValueError(
-            "custom_overlay_trio produced no stitched panels; check raw "
+            "custom_overlay_panels produced no stitched panels; check raw "
             "MRIcroGL output folders and shared erosion depths."
         )
     export_pptx_from_folder(combined_root, pptx_basename=pptx_name)

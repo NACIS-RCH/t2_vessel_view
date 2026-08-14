@@ -14,7 +14,7 @@ PANEL_IDS = (
     "multimodal_overview",
     "multimodal_overview_other_angles",
     "quant_map_mm_panel",
-    "custom_overlay_trio",
+    "custom_overlay_panels",
 )
 
 # Alias expansions for convenience.
@@ -25,10 +25,10 @@ PANEL_ALIASES = {
         "multimodal_overview",
         "multimodal_overview_other_angles",
     ),
-    # custom_overlay_trio requires a user-supplied --panel-config.
+    # custom_overlay_panels requires a user-supplied --panel-config.
     "all": tuple(
         panel_id for panel_id in PANEL_IDS
-        if panel_id != "custom_overlay_trio"
+        if panel_id != "custom_overlay_panels"
     ),
 }
 
@@ -77,8 +77,8 @@ def raw_renders_needed(requested_panels: Set[str]) -> Set[str]:
         needed.add("t2_flair")
     if "quant_map_mm_panel" in requested_panels:
         needed.add("qmm")
-    if "custom_overlay_trio" in requested_panels:
-        needed.add("custom_trio")
+    if "custom_overlay_panels" in requested_panels:
+        needed.add("custom_panels")
     return needed
 
 
@@ -88,6 +88,6 @@ def format_panels_help() -> str:
         "Display panels to generate (default: none — preprocess/erode only). "
         f"IDs: {', '.join(PANEL_IDS)}. "
         "Aliases: standard (T1/T2/multimodal structural), all "
-        "(excludes custom_overlay_trio). "
+        "(excludes custom_overlay_panels). "
         "Example: --panels standard   or   --panels t1_overlay_overview"
     )

@@ -115,11 +115,11 @@ t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
 
 # YAML-configured 2–4 column custom overlay panel
 t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
-  --panels custom_overlay_trio \
-  --panel-config /path/to/custom_overlay_trio.yaml
+  --panels custom_overlay_panels \
+  --panel-config /path/to/custom_overlay_panels.yaml
 ```
 
-Copy `examples/custom_overlay_trio.yaml` as a starting point. Custom panel
+Copy `examples/custom_overlay_panels.yaml` as a starting point. Custom panel
 overlays must already be aligned with the structural images. The YAML supports
 T1, automatically selected T2, and FLAIR bases; cardinal/surgical views; overlay
 colour, opacity and window values; all erosion depths; and slice sweeps. Overlays
@@ -155,8 +155,8 @@ Add new (non-preset) camera directions with repeatable CLI options:
 ```bash
 t2vv_render_existing \
   --source-dir /path/to/T2VesselView \
-  --panels custom_overlay_trio \
-  --panel-config /path/to/custom_overlay_trio.yaml \
+  --panels custom_overlay_panels \
+  --panel-config /path/to/custom_overlay_panels.yaml \
   --display-angle my_view 240 170 \
   --slice-plane my_view 120 0
 ```

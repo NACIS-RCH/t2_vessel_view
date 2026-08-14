@@ -259,7 +259,7 @@ def _validate_custom_slice_depth(config, source_files, t2_resolved):
             )
     if missing:
         raise ValueError(
-            "custom_overlay_trio slice erosion depth is unavailable: "
+            "custom_overlay_panels slice erosion depth is unavailable: "
             + "; ".join(missing)
         )
 
@@ -278,7 +278,7 @@ def _fill_custom_overlay_windows(slots):
             overlay["min"] = float(minimum)
             overlay["max"] = float(maximum)
             print(
-                f"[WARNING] custom_overlay_trio {slot['base']}/{overlay['name']}: "
+                f"[WARNING] custom_overlay_panels {slot['base']}/{overlay['name']}: "
                 f"window not provided; using estimated min={minimum}, max={maximum}."
             )
 
@@ -540,12 +540,12 @@ def _run_render_outputs(requested_panels):
         "t2_tra": t2_tra_eroded_files,
         "t2_3d": t2_3d_eroded_files,
     }
-    if "custom_trio" in needed:
+    if "custom_panels" in needed:
         if angle_panel_config is None:
             from . import panel_config as angle_panel_config
         custom_panel_config = angle_panel_config
 
-        custom_config = custom_panel_config.load_custom_overlay_trio_config(
+        custom_config = custom_panel_config.load_custom_overlay_panels_config(
             commandline.args.panel_config,
             extra_base_names=list(extra_eroded_files),
         )
@@ -568,7 +568,7 @@ def _run_render_outputs(requested_panels):
                 )
         if missing_bases:
             raise ValueError(
-                "custom_overlay_trio cannot render: " + "; ".join(missing_bases)
+                "custom_overlay_panels cannot render: " + "; ".join(missing_bases)
             )
 
         if any(slot["base"] == "t2" for slot in custom_config["slots"]):
@@ -602,7 +602,7 @@ def _run_render_outputs(requested_panels):
         )
         _fill_custom_overlay_windows(custom_config["slots"])
         print(
-            f"[INFO] custom_overlay_trio validated: "
+            f"[INFO] custom_overlay_panels validated: "
             f"{len(custom_config['slots'])} slot(s), "
             f"angles={custom_config['angles']}, "
             f"slice erosion prefix={custom_config['slice_erode_prefix']}."
@@ -1003,7 +1003,7 @@ def _run_render_outputs(requested_panels):
     if custom_config is not None and custom_panel_config is not None:
         custom_root = os.path.join(
             dir_structure.renders_dir,
-            "Custom_overlay_trio",
+            "Custom_overlay_panels",
         )
         custom_raw_root = os.path.join(custom_root, "raw")
         custom_stitched_root = os.path.join(custom_root, "stitched")
@@ -1025,7 +1025,7 @@ def _run_render_outputs(requested_panels):
                     custom_t2_resolved,
                 )
                 print(
-                    f"[INFO] custom_overlay_trio slot {slot['index']} "
+                    f"[INFO] custom_overlay_panels slot {slot['index']} "
                     f"(t2): source groups={groups}."
                 )
                 for group in groups:
@@ -1064,7 +1064,7 @@ def _run_render_outputs(requested_panels):
                     source_files = extra_eroded_files[base]
                     window_base = "t1"
                 print(
-                    f"[INFO] Rendering custom_overlay_trio slot {slot['index']} "
+                    f"[INFO] Rendering custom_overlay_panels slot {slot['index']} "
                     f"({base}): {len(source_files)} erosion file(s), "
                     f"angles={custom_config['angles']}."
                 )
@@ -1086,7 +1086,7 @@ def _run_render_outputs(requested_panels):
                     timeout_s=3600,
                 )
 
-        png_postprocess.run_preset_custom_overlay_trio(
+        png_postprocess.run_preset_custom_overlay_panels(
             raw_root=custom_raw_root,
             stitched_root=custom_stitched_root,
             slots=custom_config["slots"],
@@ -1094,7 +1094,7 @@ def _run_render_outputs(requested_panels):
             add_orientation_labels=True,
             background_rgb=[0, 0, 0],
             threshold=2,
-            pptx_name="custom_overlay_trio",
+            pptx_name="custom_overlay_panels",
         )
 
     has_additional_modalities = any([
