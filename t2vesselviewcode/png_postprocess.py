@@ -585,7 +585,7 @@ def annotate_overlay_colorbars_on_png(path_in: str, path_out: str, overlay_specs
         max(80, int(w * 0.28)),
         max(1, w - (2 * margin)),
     )
-    bar_width = max(6, int(w * 0.006))
+    bar_width = max(12, int(w * 0.012))
     bar_height = max(28, int(h * (0.055 if multiple_overlays else 0.08)))
 
     entries = []
