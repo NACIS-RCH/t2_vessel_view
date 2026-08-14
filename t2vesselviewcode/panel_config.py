@@ -7,6 +7,7 @@ YAML feature from changing the package's existing CLI import order.
 
 import os
 import math
+import re
 from typing import Any, Dict, List, Optional
 
 import yaml
@@ -32,6 +33,7 @@ MIN_SLOTS = 2
 MAX_SLOTS = 4
 ROW_NAMES = ("top", "bottom")
 DEFAULT_SLICE_ERODE_DEPTH = 35
+DEFAULT_CUSTOM_PPTX_NAME = "custom_overlay_panels"
 
 # [label, brain azimuth, brain elevation, clip azimuth, clip elevation]
 ANGLE_SPECS = {
@@ -101,6 +103,27 @@ def parse_slice_erode_depth(value: Any = None) -> Dict[str, Any]:
         "slice_erode_depth": depth,
         "slice_erode_prefix": f"{depth:03d}",
     }
+
+
+def parse_custom_pptx_name(value: Any = None) -> str:
+    """Validate a safe custom-panel PPTX basename and strip its extension."""
+    if value is None:
+        return DEFAULT_CUSTOM_PPTX_NAME
+    name = str(value).strip()
+    if name.lower().endswith(".pptx"):
+        name = name[:-5].rstrip()
+    if not name:
+        raise ValueError("pptx_name must not be empty.")
+    if name in (".", "..") or "/" in name or "\\" in name:
+        raise ValueError(
+            "pptx_name must be a filename only, not a path."
+        )
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 _.-]*", name):
+        raise ValueError(
+            "pptx_name may contain letters, numbers, spaces, underscores, "
+            "hyphens, and periods."
+        )
+    return name
 
 
 def angle_rows(angles: List[str]) -> List[List[Any]]:
@@ -481,6 +504,7 @@ def load_custom_overlay_panels_config(
         )
 
     slice_depth = parse_slice_erode_depth(raw.get("slice_erode_depth"))
+    pptx_name = parse_custom_pptx_name(raw.get("pptx_name"))
     normalized_extra_bases = []
     for name in extra_base_names or []:
         normalized = str(name).strip().lower()
@@ -605,6 +629,7 @@ def load_custom_overlay_panels_config(
     return {
         "path": config_path,
         **slice_depth,
+        "pptx_name": pptx_name,
         "angles": angles,
         "slots": slots,
         "rows": rows,

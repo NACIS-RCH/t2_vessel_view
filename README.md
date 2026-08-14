@@ -148,6 +148,14 @@ rows:
 If row lengths differ, both rows are left-aligned and the wider row determines
 the final panel width.
 
+Set the custom PowerPoint filename in YAML with a basename or optional extension:
+
+```yaml
+pptx_name: longitudinal_comparison
+```
+
+This writes `PowerPoints/longitudinal_comparison.pptx`. Paths are not accepted.
+
 ### Brand-new display and slice angles
 
 Add new (non-preset) camera directions with repeatable CLI options:

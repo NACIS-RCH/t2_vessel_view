@@ -32,6 +32,7 @@
 #   automatically to this panel's angle list.
 
 slice_erode_depth: 35
+pptx_name: custom_overlay_panels
 
 angles:
   - superior

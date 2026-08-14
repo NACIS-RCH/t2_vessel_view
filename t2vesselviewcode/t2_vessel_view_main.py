@@ -1094,7 +1094,7 @@ def _run_render_outputs(requested_panels):
             add_orientation_labels=True,
             background_rgb=[0, 0, 0],
             threshold=2,
-            pptx_name="custom_overlay_panels",
+            pptx_name=custom_config["pptx_name"],
         )
 
     has_additional_modalities = any([
