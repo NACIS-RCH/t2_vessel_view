@@ -13,6 +13,19 @@ from . import dir_structure
 
 
 def make_hull_mask(regular_mask):
+    """
+    Build a convex hull mask from a brain mask NIfTI and write it to disk.
+
+    Parameters
+    ----------
+    regular_mask : str
+        Path to the input brain mask NIfTI.
+
+    Returns
+    -------
+    str
+        Path to the written binary hull mask (test_final_hull_mask.nii.gz).
+    """
 
     #print(f'Loading mask {mask}')
     ## import nifti file with nibabel
@@ -104,8 +117,9 @@ def make_hull_mask(regular_mask):
     test_final_hull_mask_bin = test_final_hull_mask > 0
     test_final_hull_mask_bin_float = sitk.Cast(test_final_hull_mask_bin, sitk.sitkFloat32)
     
-    sitk.WriteImage(test_final_hull_mask_bin_float, os.path.join(dir_structure.processing_mask_dir, "test_final_hull_mask.nii.gz"))
-    
-    return out_top_hull_nii, test_final_hull_mask
+    final_hull_path = os.path.join(dir_structure.processing_mask_dir, "test_final_hull_mask.nii.gz")
+    sitk.WriteImage(test_final_hull_mask_bin_float, final_hull_path)
+
+    return final_hull_path
 
 

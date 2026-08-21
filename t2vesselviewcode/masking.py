@@ -108,18 +108,18 @@ def main_mask_operations(resampled_mask):
     
     Parameters
     ----------
-    resampled_mask : SimpleITK image object
-        The resampled mask to process
+    resampled_mask : str
+        Path to the resampled mask NIfTI to process.
         
     Returns
     -------
     SimpleITK image object
         Processed mask ready for erosion
     """
-    # Create hull mask if requested
+    # Create hull mask if requested. make_hull_mask writes a binary NIfTI
+    # and returns that path so sitk.ReadImage can load it like the non-hull branch.
     if commandline.args.use_hull_mask:
-        top_hull, final_hull = make_mask_convex_hull.make_hull_mask(resampled_mask)
-        mask_to_process = final_hull
+        mask_to_process = make_mask_convex_hull.make_hull_mask(resampled_mask)
     else:
         mask_to_process = resampled_mask
     
