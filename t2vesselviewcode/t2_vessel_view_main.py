@@ -223,6 +223,36 @@ def _collect_eroded_files(directory, pattern):
     return sorted(glob.glob(os.path.join(directory, pattern)), key=os.path.basename)
 
 
+def _group_t2_files_by_source(
+    sagittal_files,
+    coronal_files,
+    transverse_files,
+    t2_3d_files,
+):
+    """Return T2 files under the concrete source keys used by panel rules."""
+    sagittal_files = list(sagittal_files or [])
+    return {
+        "t2_sag_left": [
+            path for path in sagittal_files
+            if "t2_sag_left" in os.path.basename(path).lower()
+        ],
+        "t2_sag_right": [
+            path for path in sagittal_files
+            if "t2_sag_right" in os.path.basename(path).lower()
+        ],
+        "t2_sag_generic": [
+            path for path in sagittal_files
+            if (
+                "t2_sag_left" not in os.path.basename(path).lower()
+                and "t2_sag_right" not in os.path.basename(path).lower()
+            )
+        ],
+        "t2_cor": list(coronal_files or []),
+        "t2_tra": list(transverse_files or []),
+        "t2_3d": list(t2_3d_files or []),
+    }
+
+
 def _available_erode_prefixes(paths):
     """Return sorted zero-padded erosion prefixes found in NIfTI filenames."""
     prefixes = set()
@@ -443,19 +473,21 @@ def _validate_render_existing_inputs(requested_panels):
         requested_qmm_angles = getattr(commandline.args, "qmm_angles", None) or [
             "left", "right", "anterior", "posterior", "superior", "inferior"
         ]
-        needs_sag = any(ang in requested_qmm_angles for ang in ("left", "right"))
-        needs_cor = any(ang in requested_qmm_angles for ang in ("anterior", "posterior"))
-        needs_tra = any(ang in requested_qmm_angles for ang in ("superior", "inferior"))
-        has_t2_3d = bool(eroded_sets["T2 3D"])
-        if needs_sag and not (eroded_sets["T2 sagittal"] or has_t2_3d or eroded_sets["T2 transverse"]):
-            raise ValueError(
-                "quant_map_mm_panel left/right angles require T2 sagittal, "
-                "fallback T2 3D, or fallback T2 transverse eroded files."
-            )
-        if needs_cor and not (eroded_sets["T2 coronal"] or has_t2_3d):
-            raise ValueError("quant_map_mm_panel anterior/posterior angles require T2 coronal or fallback T2 3D eroded files.")
-        if needs_tra and not (eroded_sets["T2 transverse"] or has_t2_3d):
-            raise ValueError("quant_map_mm_panel superior/inferior angles require T2 transverse or fallback T2 3D eroded files.")
+        from . import panel_config
+
+        t2_files_by_source = _group_t2_files_by_source(
+            eroded_sets["T2 sagittal"],
+            eroded_sets["T2 coronal"],
+            eroded_sets["T2 transverse"],
+            eroded_sets["T2 3D"],
+        )
+        available_t2 = [
+            source for source, files in t2_files_by_source.items() if files
+        ]
+        panel_config.resolve_t2_sources(
+            requested_qmm_angles,
+            available_t2,
+        )
 
 
 def _run_render_outputs(requested_panels):
@@ -514,32 +546,15 @@ def _run_render_outputs(requested_panels):
     custom_config = None
     custom_panel_config = None
     angle_panel_config = None
-    if cli_custom_angles:
+    if cli_custom_angles or "qmm" in needed:
         from . import panel_config as angle_panel_config
     custom_t2_resolved = {}
-    custom_t2_sag_left_files = [
-        path for path in t2_sag_eroded_files
-        if "t2_sag_left" in os.path.basename(path).lower()
-    ]
-    custom_t2_sag_right_files = [
-        path for path in t2_sag_eroded_files
-        if "t2_sag_right" in os.path.basename(path).lower()
-    ]
-    custom_t2_sag_generic_files = [
-        path for path in t2_sag_eroded_files
-        if (
-            "t2_sag_left" not in os.path.basename(path).lower()
-            and "t2_sag_right" not in os.path.basename(path).lower()
-        )
-    ]
-    custom_t2_files = {
-        "t2_sag_left": custom_t2_sag_left_files,
-        "t2_sag_right": custom_t2_sag_right_files,
-        "t2_sag_generic": custom_t2_sag_generic_files,
-        "t2_cor": t2_cor_eroded_files,
-        "t2_tra": t2_tra_eroded_files,
-        "t2_3d": t2_3d_eroded_files,
-    }
+    t2_files_by_source = _group_t2_files_by_source(
+        t2_sag_eroded_files,
+        t2_cor_eroded_files,
+        t2_tra_eroded_files,
+        t2_3d_eroded_files,
+    )
     if "custom_panels" in needed:
         if angle_panel_config is None:
             from . import panel_config as angle_panel_config
@@ -573,7 +588,7 @@ def _run_render_outputs(requested_panels):
 
         if any(slot["base"] == "t2" for slot in custom_config["slots"]):
             available_t2 = [
-                source for source, files in custom_t2_files.items() if files
+                source for source, files in t2_files_by_source.items() if files
             ]
             existing_angles = [
                 angle for angle in custom_config["angles"]
@@ -592,7 +607,7 @@ def _run_render_outputs(requested_panels):
         custom_source_files = {
             "t1": t1_eroded_files,
             "flair": flair_eroded_files,
-            **custom_t2_files,
+            **t2_files_by_source,
             **extra_eroded_files,
         }
         _validate_custom_slice_depth(
@@ -767,7 +782,7 @@ def _run_render_outputs(requested_panels):
         and angle_panel_config is not None
     ):
         available_t2 = [
-            source for source, files in custom_t2_files.items() if files
+            source for source, files in t2_files_by_source.items() if files
         ]
         inferred_sources, _details = _infer_custom_t2_sources(
             cli_custom_angles,
@@ -789,7 +804,7 @@ def _run_render_outputs(requested_panels):
                 [],
             ).append(spec)
         for source, specs in grouped_specs.items():
-            source_files = custom_t2_files[source]
+            source_files = t2_files_by_source[source]
             volume_rendering.render_volume_and_save_pngs_mricrogl(
                 source_files,
                 os.path.join(
@@ -816,17 +831,61 @@ def _run_render_outputs(requested_panels):
             main_prefix = f"{main_depth_int:03d}"
             t1_subset = _select_qmm_eroded_subset(t1_eroded_files, main_depth_int)
             flair_subset = _select_qmm_eroded_subset(flair_eroded_files, main_depth_int)
-            t2_sag_subset = _select_qmm_eroded_subset(t2_sag_eroded_files, main_depth_int)
-            t2_cor_subset = _select_qmm_eroded_subset(t2_cor_eroded_files, main_depth_int)
-            t2_tra_subset = _select_qmm_eroded_subset(t2_tra_eroded_files, main_depth_int)
-            t2_3d_subset = _select_qmm_eroded_subset(t2_3d_eroded_files, main_depth_int)
+            qmm_t2_subsets = {
+                source: _select_qmm_eroded_subset(files, main_depth_int)
+                for source, files in t2_files_by_source.items()
+            }
             if not t1_subset:
                 raise ValueError("quant_map_mm_panel: no matching T1 eroded subset found around requested main depth.")
             if not flair_subset:
                 raise ValueError("quant_map_mm_panel: no matching FLAIR eroded subset found around requested main depth.")
+            default_qmm_angles = getattr(
+                commandline.args,
+                "qmm_angles",
+                None,
+            ) or [
+                "left",
+                "right",
+                "anterior",
+                "posterior",
+                "superior",
+                "inferior",
+            ]
+            available_qmm_t2 = [
+                source for source, paths in qmm_t2_subsets.items() if paths
+            ]
+            resolved_qmm_t2 = angle_panel_config.resolve_t2_sources(
+                default_qmm_angles,
+                available_qmm_t2,
+            )
+            qmm_t2_groups = angle_panel_config.group_angles_by_t2_source(
+                default_qmm_angles,
+                resolved_qmm_t2,
+            )
+            qmm_folder_for_source = {
+                "t2_sag_left": "T2_sag",
+                "t2_sag_right": "T2_sag",
+                "t2_sag_generic": "T2_sag",
+                "t2_cor": "T2_cor",
+                "t2_tra": "T2_tra",
+                "t2_3d": "T2_3d",
+            }
+            default_slice_rows = _slice_rows_for_labels(
+                default_qmm_angles,
+                angle_panel_config,
+                [],
+            )
             print(
                 f"[INFO] Running quant_map_mm_panel preset with main erosion depth {main_depth_int} "
                 f"(prefix {main_prefix})."
+            )
+            print(
+                "[INFO] quant_map_mm_panel T2 sources: "
+                + ", ".join(
+                    f"{angle}={source}"
+                    for angle, source in resolved_qmm_t2.items()
+                )
+                + "."
             )
             t1_win = volume_rendering.compute_series_window(t1_subset, low_pct=2.0, high_pct=90.0)
             t1_win = volume_rendering.refine_window_vmax_by_saturation_circles(
@@ -847,7 +906,8 @@ def _run_render_outputs(requested_panels):
                 overlays=qmm_t1_overlays,
                 window=t1_win,
                 main_erode_prefix=main_prefix,
-                mricrogl_path=mricrogl_exec
+                mricrogl_path=mricrogl_exec,
+                angles=default_slice_rows,
             )
             volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                 flair_subset,
@@ -855,24 +915,33 @@ def _run_render_outputs(requested_panels):
                 overlays=qmm_non_t1_overlays,
                 window=flair_win,
                 main_erode_prefix=main_prefix,
-                mricrogl_path=mricrogl_exec
+                mricrogl_path=mricrogl_exec,
+                angles=default_slice_rows,
             )
-            for subset, label in [
-                (t2_sag_subset, "T2_sag"),
-                (t2_cor_subset, "T2_cor"),
-                (t2_tra_subset, "T2_tra"),
-                (t2_3d_subset, "T2_3d"),
-            ]:
-                if subset:
-                    t2_win = volume_rendering.compute_series_window(subset, low_pct=0.3, high_pct=99.75)
-                    volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
-                        subset,
-                        os.path.join(dir_structure.renders_qmm_raw_dir, label),
-                        overlays=qmm_non_t1_overlays,
-                        window=t2_win,
-                        main_erode_prefix=main_prefix,
-                        mricrogl_path=mricrogl_exec
-                    )
+            for group in qmm_t2_groups:
+                source = group["source"]
+                source_files = qmm_t2_subsets[source]
+                t2_win = volume_rendering.compute_series_window(
+                    source_files,
+                    low_pct=0.3,
+                    high_pct=99.75,
+                )
+                volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
+                    source_files,
+                    os.path.join(
+                        dir_structure.renders_qmm_raw_dir,
+                        qmm_folder_for_source[source],
+                    ),
+                    overlays=qmm_non_t1_overlays,
+                    window=t2_win,
+                    main_erode_prefix=main_prefix,
+                    mricrogl_path=mricrogl_exec,
+                    angles=_slice_rows_for_labels(
+                        group["angles"],
+                        angle_panel_config,
+                        [],
+                    ),
+                )
             qmm_custom_t2_source_map = {}
             if cli_custom_angles and angle_panel_config is not None:
                 custom_slice_rows = custom_angles.slice_rows(cli_custom_angles)
@@ -894,46 +963,11 @@ def _run_render_outputs(requested_panels):
                     mricrogl_path=mricrogl_exec,
                     angles=custom_slice_rows,
                 )
-                qmm_sag_left = [
-                    path for path in t2_sag_subset
-                    if "t2_sag_left" in os.path.basename(path).lower()
-                ]
-                qmm_sag_right = [
-                    path for path in t2_sag_subset
-                    if "t2_sag_right" in os.path.basename(path).lower()
-                ]
-                qmm_sag_generic = [
-                    path for path in t2_sag_subset
-                    if (
-                        "t2_sag_left" not in os.path.basename(path).lower()
-                        and "t2_sag_right" not in os.path.basename(path).lower()
-                    )
-                ]
-                qmm_source_files = {
-                    "t2_sag_left": qmm_sag_left,
-                    "t2_sag_right": qmm_sag_right,
-                    "t2_sag_generic": qmm_sag_generic,
-                    "t2_cor": t2_cor_subset,
-                    "t2_tra": t2_tra_subset,
-                    "t2_3d": t2_3d_subset,
-                }
-                available_qmm_t2 = [
-                    source for source, paths in qmm_source_files.items()
-                    if paths
-                ]
                 inferred_qmm, _qmm_details = _infer_custom_t2_sources(
                     cli_custom_angles,
                     available_qmm_t2,
                     angle_panel_config,
                 )
-                qmm_folder_for_source = {
-                    "t2_sag_left": "T2_sag",
-                    "t2_sag_right": "T2_sag",
-                    "t2_sag_generic": "T2_sag",
-                    "t2_cor": "T2_cor",
-                    "t2_tra": "T2_tra",
-                    "t2_3d": "T2_3d",
-                }
                 grouped_custom_qmm = {}
                 custom_spec_by_label = {
                     spec["label"]: spec for spec in cli_custom_angles
@@ -946,7 +980,7 @@ def _run_render_outputs(requested_panels):
                         qmm_folder_for_source[source]
                     )
                 for source, specs in grouped_custom_qmm.items():
-                    source_files = qmm_source_files[source]
+                    source_files = qmm_t2_subsets[source]
                     volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
                         source_files,
                         os.path.join(
@@ -962,29 +996,14 @@ def _run_render_outputs(requested_panels):
                         mricrogl_path=mricrogl_exec,
                         angles=custom_angles.slice_rows(specs),
                     )
-            requested_qmm_angles = getattr(commandline.args, "qmm_angles", None) or [
-                "left", "right", "anterior", "posterior", "superior", "inferior"
-            ]
-            requested_qmm_angles = list(requested_qmm_angles) + [
+            requested_qmm_angles = list(default_qmm_angles) + [
                 spec["label"] for spec in cli_custom_angles
-                if spec["label"] not in requested_qmm_angles
+                if spec["label"] not in default_qmm_angles
             ]
-            angle_to_t2_source = {}
-            if t2_sag_subset:
-                angle_to_t2_source["left"] = "T2_sag"
-                angle_to_t2_source["right"] = "T2_sag"
-            if t2_cor_subset:
-                angle_to_t2_source["anterior"] = "T2_cor"
-                angle_to_t2_source["posterior"] = "T2_cor"
-            if t2_tra_subset:
-                angle_to_t2_source["superior"] = "T2_tra"
-                angle_to_t2_source["inferior"] = "T2_tra"
-            for ang in requested_qmm_angles:
-                if ang not in angle_to_t2_source and t2_3d_subset:
-                    angle_to_t2_source[ang] = "T2_3d"
-            for ang in ("left", "right"):
-                if ang in requested_qmm_angles and ang not in angle_to_t2_source and t2_tra_subset:
-                    angle_to_t2_source[ang] = "T2_tra"
+            angle_to_t2_source = {
+                angle: qmm_folder_for_source[source]
+                for angle, source in resolved_qmm_t2.items()
+            }
             angle_to_t2_source.update(qmm_custom_t2_source_map)
             png_postprocess.run_preset_quant_map_mm_panel(
                 raw_root=dir_structure.renders_qmm_raw_dir,
@@ -1030,7 +1049,7 @@ def _run_render_outputs(requested_panels):
                 )
                 for group in groups:
                     source = group["source"]
-                    source_files = custom_t2_files[source]
+                    source_files = t2_files_by_source[source]
                     print(
                         f"[INFO] Rendering slot {slot['index']} with {source}: "
                         f"{len(source_files)} erosion file(s), "

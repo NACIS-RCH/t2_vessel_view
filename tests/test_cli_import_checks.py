@@ -26,7 +26,9 @@ class TestCliImportChecks(unittest.TestCase):
         self.assertNotIn("AttributeError", combined)
         self.assertIn("--panel-config", combined)
         self.assertIn("--extra-image", combined)
-        self.assertIn("custom_overlay_trio", combined)
+        self.assertIn("--display-angle", combined)
+        self.assertIn("--slice-plane", combined)
+        self.assertIn("custom_overlay_panels", combined)
 
     def test_render_existing_dry_run_forwards_custom_config(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -52,7 +54,7 @@ class TestCliImportChecks(unittest.TestCase):
                     "--source-dir",
                     source_dir,
                     "--panels",
-                    "custom_overlay_trio",
+                    "custom_overlay_panels",
                     "--panel-config",
                     config_path,
                     "--dry-run",
@@ -66,7 +68,7 @@ class TestCliImportChecks(unittest.TestCase):
         combined = result.stdout + result.stderr
         self.assertEqual(result.returncode, 0, combined)
         self.assertNotIn("AttributeError", combined)
-        self.assertIn("custom_overlay_trio", combined)
+        self.assertIn("custom_overlay_panels", combined)
         self.assertIn(config_path, combined)
         self.assertIn("Dry run requested", combined)
 

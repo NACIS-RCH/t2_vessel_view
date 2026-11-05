@@ -72,13 +72,13 @@ class TestRenderExistingCli(unittest.TestCase):
             self.source_dir,
             [
                 "--panels",
-                "custom_overlay_trio",
+                "custom_overlay_panels",
                 "--panel-config",
                 config_path,
             ],
         )
 
-        self.assertIn("custom_overlay_trio", cmd)
+        self.assertIn("custom_overlay_panels", cmd)
         self.assertIn("--panel-config", cmd)
         self.assertEqual(cmd[cmd.index("--panel-config") + 1], config_path)
         self.assertFalse(render_existing_cli._uses_quant_map_panel(cmd))
