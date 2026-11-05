@@ -37,11 +37,26 @@ For Linux, dependencies include `pyvips-binary`, which provides bundled libvips 
 
 Tested on macOS; Python version as per `t2vv_env.yml`/`pyproject.toml`.
 
+### MRIcroGL external dependency
+MRIcroGL is an external application and is not installed by pip or conda with
+this package.
+
+- **Preprocessing and erosion only:** MRIcroGL is not required. The startup
+  check reports a warning if it is unavailable, then continues and writes the
+  eroded NIfTI outputs.
+- **Display panels and render-existing runs:** MRIcroGL is required. The
+  command stops before processing or rendering if it cannot locate a usable
+  executable.
+
+The startup check always reports whether MRIcroGL rendering is available, so a
+user does not unknowingly complete preprocessing and expect unavailable panel
+outputs.
+
 ## Quick start
 ```bash
 conda activate t2vv
 
-# (Optional) Point to your MRIcroGL executable (macOS default shown)
+# (Optional) Point to your MRIcroGL executable when generating renders (macOS default shown)
 export T2VV_MRICROGL_PATH="/Applications/MRIcroGL.app/Contents/MacOS/MRIcroGL"
 
 # Show command line help
@@ -59,6 +74,10 @@ Copy/paste these commands in Terminal before running the pipeline.
 ```bash
 command -v MRIcroGL || command -v mricrogl || command -v MRIcroGL_QT
 ```
+
+On Linux, MRIcroGL may first need to be loaded through the local
+module system or installed in a user-accessible location. Ask the
+administrator for the executable path if the command above returns nothing.
 
 2) Set MRIcroGL path for the current terminal session:
 ```bash

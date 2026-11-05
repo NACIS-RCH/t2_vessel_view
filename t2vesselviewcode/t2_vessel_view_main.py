@@ -38,6 +38,14 @@ def run_dependency_preflight():
         return True
 
     errors = []
+    rendering_issues = []
+    requested_panels = set(
+        getattr(commandline.args, "resolved_panels", set()) or set()
+    )
+    render_existing = bool(
+        getattr(commandline.args, "render_existing_erosions", False)
+    )
+    rendering_required = bool(requested_panels) or render_existing
 
     print("Running dependency preflight checks...")
 
@@ -48,7 +56,7 @@ def run_dependency_preflight():
         )
         print(f"[OK] MRIcroGL found: {mricrogl_path}")
     except Exception as e:
-        errors.append(
+        rendering_issues.append(
             "MRIcroGL not found. Install MRIcroGL or set T2VV_MRICROGL_PATH. "
             "Try this command to locate it: "
             "`command -v MRIcroGL || command -v mricrogl || command -v MRIcroGL_QT`. "
@@ -62,14 +70,26 @@ def run_dependency_preflight():
         )
         print(f"[OK] MRIcroGL render template found: {template_path}")
     except Exception as e:
-        errors.append(
+        rendering_issues.append(
             "MRIcroGL render template not found. Ensure display script templates are installed "
             "or set T2VV_MRICROGL_TEMPLATE_DIR. "
             f"Details: {e}"
         )
 
+    if rendering_issues:
+        if rendering_required:
+            errors.extend(rendering_issues)
+        else:
+            for issue in rendering_issues:
+                print(f"[WARNING] {issue}")
+            print(
+                "[WARNING] Continuing with preprocessing and erosion only. "
+                "Eroded NIfTI outputs will be created, but display panels cannot "
+                "be generated until MRIcroGL is installed and configured."
+            )
+
     # FSL commands needed by this pipeline
-    if getattr(commandline.args, "render_existing_erosions", False):
+    if render_existing:
         print("[INFO] Render-existing mode enabled: skipping FSL dependency checks.")
     else:
         bet_path = shutil.which("bet")
@@ -95,7 +115,13 @@ def run_dependency_preflight():
             print(f"  - {err}")
         return False
 
-    print("Dependency preflight checks passed.")
+    if rendering_issues:
+        print(
+            "Dependency preflight checks passed for preprocessing and erosion. "
+            "MRIcroGL rendering is unavailable."
+        )
+    else:
+        print("Dependency preflight checks passed.")
     return True
 
 OVERLAY_CLI_COUNT = 4
