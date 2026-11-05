@@ -1755,6 +1755,21 @@ def _prepare_qmm_annotated_series(
     return ann_paths
 
 
+def _qmm_t2_modality_label(t2_source: str) -> str:
+    """Return a user-facing inverted-T2 label for one QMM source."""
+    source_key = str(t2_source).strip().lower()
+    labels = {
+        "t2_sag": "T2 sag (inv)",
+        "t2_sag_left": "T2 sag (inv)",
+        "t2_sag_right": "T2 sag (inv)",
+        "t2_sag_generic": "T2 sag (inv)",
+        "t2_cor": "T2 cor (inv)",
+        "t2_tra": "T2 tra (inv)",
+        "t2_3d": "T2 3D (inv)",
+    }
+    return labels.get(source_key, "T2 (inv)")
+
+
 def run_preset_quant_map_mm_panel(
     raw_root: str,
     angle_to_t2_source: Dict[str, str],
@@ -1781,7 +1796,6 @@ def run_preset_quant_map_mm_panel(
     overlay1_name = (overlay_names[0] if overlay_names and len(overlay_names) >= 1 else "Overlay1")
     t1_overlay_names = overlay_names if overlay_names else [overlay1_name]
     t1_overlay_label = "T1 + " + " + ".join(t1_overlay_names)
-    t2_overlay_label = f"T2 (inv) + {overlay1_name}"
     flair_overlay_label = f"FLAIR + {overlay1_name}"
     t1_colorbar_specs = _deduplicate_overlay_colorbar_specs(overlay_specs)
     non_t1_colorbar_specs = t1_colorbar_specs[:1]
@@ -1796,6 +1810,8 @@ def run_preset_quant_map_mm_panel(
         if not t2_source:
             print(f"[WARNING] quant_map_mm_panel: skipping angle '{angle}' (no T2 source selected)")
             continue
+        t2_structural_label = _qmm_t2_modality_label(t2_source)
+        t2_overlay_label = f"{t2_structural_label} + {overlay1_name}"
 
         # Build six required directories for two-row (top overlay, bottom structural)
         t1_overlay_dir = os.path.join(raw_root, 'T1', f"{angle}_slices_overlay")
@@ -1835,7 +1851,7 @@ def run_preset_quant_map_mm_panel(
                     t2_ov_ann = _prepare_qmm_annotated_series(slice_maps[1], common_slice_keys, os.path.join(annotated_root, 't2_overlay'), angle, t2_overlay_label, add_orientation_labels, background_rgb, threshold)
                     fl_ov_ann = _prepare_qmm_annotated_series(slice_maps[2], common_slice_keys, os.path.join(annotated_root, 'flair_overlay'), angle, flair_overlay_label, add_orientation_labels, background_rgb, threshold)
                     t1_st_ann = _prepare_qmm_annotated_series(slice_maps[3], common_slice_keys, os.path.join(annotated_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
-                    t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
+                    t2_st_ann = _prepare_qmm_annotated_series(slice_maps[4], common_slice_keys, os.path.join(annotated_root, 't2_struct'), angle, t2_structural_label, add_orientation_labels, background_rgb, threshold)
                     fl_st_ann = _prepare_qmm_annotated_series(slice_maps[5], common_slice_keys, os.path.join(annotated_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
                     annotate_overlay_colorbars_on_series(
@@ -1894,7 +1910,7 @@ def run_preset_quant_map_mm_panel(
         t2_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[1], common_erode_keys, os.path.join(erode_ann_root, 't2_overlay'), angle, t2_overlay_label, add_orientation_labels, background_rgb, threshold)
         fl_ov_e_ann = _prepare_qmm_annotated_series(erode_maps[2], common_erode_keys, os.path.join(erode_ann_root, 'flair_overlay'), angle, flair_overlay_label, add_orientation_labels, background_rgb, threshold)
         t1_st_e_ann = _prepare_qmm_annotated_series(erode_maps[3], common_erode_keys, os.path.join(erode_ann_root, 't1_struct'), angle, 'T1', add_orientation_labels, background_rgb, threshold)
-        t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, 'T2 (inv)', add_orientation_labels, background_rgb, threshold)
+        t2_st_e_ann = _prepare_qmm_annotated_series(erode_maps[4], common_erode_keys, os.path.join(erode_ann_root, 't2_struct'), angle, t2_structural_label, add_orientation_labels, background_rgb, threshold)
         fl_st_e_ann = _prepare_qmm_annotated_series(erode_maps[5], common_erode_keys, os.path.join(erode_ann_root, 'flair_struct'), angle, 'FLAIR', add_orientation_labels, background_rgb, threshold)
 
         annotate_overlay_colorbars_on_series(
