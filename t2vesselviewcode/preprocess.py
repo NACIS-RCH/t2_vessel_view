@@ -4,6 +4,7 @@ import nipype.interfaces.fsl as fsl
 import ants
 import glob
 import shutil
+import tempfile
 import nibabel as nib
 import numpy as np
 
@@ -54,6 +55,31 @@ def _cleanup_preprocess_intermediates(directory, paths=None, glob_patterns=None,
 
 
 # ------------------------ Main functions ------------------------
+
+def _run_robustfov_crop(input_t1, output_dir, brainsize=180):
+    """Run RobustFOV without writing side products to the caller's directory."""
+    output_dir = os.path.abspath(output_dir)
+    input_t1 = os.path.abspath(input_t1)
+    cropped_path = os.path.join(output_dir, "T1_crop.nii.gz")
+    os.makedirs(output_dir, exist_ok=True)
+
+    # RobustFOV always creates an input-to-ROI transform. Keep that required
+    # side product in an isolated work directory because this pipeline does
+    # not use the transform after cropping.
+    with tempfile.TemporaryDirectory(
+        prefix="robustfov_",
+        dir=output_dir,
+    ) as work_dir:
+        transform_path = os.path.join(work_dir, "T1_to_ROI.mat")
+        crop = fsl.RobustFOV()
+        crop.inputs.in_file = input_t1
+        crop.inputs.brainsize = int(brainsize)
+        crop.inputs.out_roi = cropped_path
+        crop.inputs.out_transform = transform_path
+        crop.run(cwd=work_dir)
+
+    return cropped_path
+
 
 def get_preprocessed_dir(image_type):
     """
@@ -208,19 +234,14 @@ def preprocess_main_image(input_t1):
         return dummy_image, dummy_path
     
     print("[INFO] Cropping main image using FSL RobustFOV")
-    
-    ## crop using fsl robustfov in nipype. 
-    ## this still outputs a "to_ROI" suffix file, find how to stop that
-    crop = fsl.RobustFOV()
-    crop.inputs.in_file = input_t1
-    crop.inputs.brainsize = 180
-    ## this doesn't work but there's no documentation for an alternative
-    #crop.inputs.generate_report = False
-    crop.inputs.out_roi = os.path.join(output_dir, "T1_crop.nii.gz")
-    res = crop.run()
+    main_image_crop_path = _run_robustfov_crop(
+        input_t1,
+        output_dir,
+        brainsize=180,
+    )
     
     ## sitk n4 (THIS WORKS)
-    main_image_crop = sitk.ReadImage(os.path.join(output_dir, "T1_crop.nii.gz"))
+    main_image_crop = sitk.ReadImage(main_image_crop_path)
     main_image_crop_n4 = sitk.N4BiasFieldCorrection(main_image_crop)
     #write_debug_image(main_image_crop_n4,"main_image_crop_n4.nii.gz")
     
