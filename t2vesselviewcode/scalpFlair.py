@@ -3,7 +3,7 @@
 ### Thanks Richard Beare for this code
 ### Simple watershed scalping for FLAIR 
 
-# TODO: change size of strel to create more space between brain and background marker
+
 
 
 import sys
@@ -11,6 +11,7 @@ import re
 import os
 import os.path
 import subprocess
+import math
 import SimpleITK as sitk
 import ants
 
@@ -77,6 +78,20 @@ RS = 334
 
 VERBOSE = True
 
+def _radius_mm_to_voxels(image, radius_mm):
+    """Convert an isotropic physical radius in millimetres to voxel radii."""
+    if radius_mm <= 0:
+        raise ValueError("Morphology radius must be greater than zero millimetres.")
+
+    spacing = image.GetSpacing()
+    if not spacing or any(value <= 0 for value in spacing):
+        raise ValueError(f"Image spacing must contain positive values; got {spacing}.")
+
+    return tuple(
+        max(1, int(math.ceil(float(radius_mm) / float(value))))
+        for value in spacing
+    )
+
 def alignmask(flair, template, template_mask):
     flairI = ants.image_read(flair)
     templateI = ants.image_read(template)
@@ -100,11 +115,13 @@ def Scalp(flair, template_mask, workdir):
     # might be good (dilation - original)
     maskI = sitk.ReadImage(template_mask, sitk.sitkUInt8) > 0
     # create the marker image
-    radius = (19,19,19)
+    # Preserve the original physical sizes from a 1 mm grid after the pipeline
+    # resamples the FLAIR (normally to 0.5 mm isotropic spacing).
+    radius = _radius_mm_to_voxels(maskI, 19.0)
     #brainmarker = sitk.BinaryErode(maskI, radius, sitk.sitkBox)
     brainmarker = sitk.GrayscaleErode(maskI, radius, sitk.sitkBox)
     # invert and erode to get the background (erosion doesn't need to be the same)
-    radius = (5,5,5)
+    radius = _radius_mm_to_voxels(maskI, 5.0)
     #bgmarker = 2 * sitk.BinaryErode(maskI == 0, radius, sitk.sitkBox)
     bgmarker = 2 * sitk.GrayscaleErode(maskI == 0, radius, sitk.sitkBox)
     
@@ -117,9 +134,11 @@ def Scalp(flair, template_mask, workdir):
     # set up the flair for watershed
     flairI = sitk.ReadImage(flair)
     # Small opening to clean up noise and some of the dura
-    opened = sitk.GrayscaleMorphologicalOpening(flairI, (3,3,3), sitk.sitkBox)
+    opening_radius = _radius_mm_to_voxels(flairI, 3.0)
+    opened = sitk.GrayscaleMorphologicalOpening(flairI, opening_radius, sitk.sitkBox)
     # make the gradient
-    control = sitk.GrayscaleDilate(opened, (5,5,5), sitk.sitkBox) - opened
+    gradient_radius = _radius_mm_to_voxels(flairI, 5.0)
+    control = sitk.GrayscaleDilate(opened, gradient_radius, sitk.sitkBox) - opened
     control = sitk.SmoothingRecursiveGaussian(control, (1,1,1))
     sitk.WriteImage(control, os.path.join(workdir, "i.nii.gz"))
     ws = sitk.MorphologicalWatershedFromMarkers(control, marker, True)
