@@ -13,7 +13,7 @@ import nipype.interfaces.fsl as fsl
 import ants
 import glob
 
-# Check if we're in test mode
+# Check if in test mode
 TEST_MODE = os.environ.get('T2VV_TEST_MODE') == '1'
 
 # Import package modules using relative imports
