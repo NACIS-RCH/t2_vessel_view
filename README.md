@@ -17,25 +17,57 @@ This package is not for clinical diagnostic use.
 
 
 ## Installation
+Clone the repository, then run the installation commands from its root
+directory:
+
 ```bash
-conda env create -f t2vv_env.yml -n t2vv
+git clone https://github.com/NACIS-RCH/t2_vessel_view.git
+cd t2_vessel_view
+conda env create -f t2vv_env.yml
 conda activate t2vv
-# or, from source
-pip install -e .
+python -m pip install .
 ```
 
-### Linux pip-first install (no sudo)
-If `conda env create` is slow/hangs, a pip-first workflow is supported:
+### Alternative Linux installation from source
+If resolving the full Conda environment is slow, create a minimal Conda
+environment and install the Python dependencies with pip. Run these commands
+from the repository root:
+
 ```bash
 conda create -n t2vv python=3.10 -y
 conda activate t2vv
-pip install -r requirements.txt
-pip install -e .
+python -m pip install --upgrade pip
+python -m pip install .
 ```
 
 For Linux, dependencies include `pyvips-binary`, which provides bundled libvips for `pyvips` usage without system-level install.
+The Python installation above does not require `sudo`; FSL and MRIcroGL are
+external applications and must be installed separately when needed.
+
+### Developer installation
+Developers who want source-code changes to take effect without reinstalling the
+package can use editable mode from the repository root:
+
+```bash
+conda activate t2vv
+python -m pip install -e .
+```
 
 Tested on macOS; Python version as per `t2vv_env.yml`/`pyproject.toml`.
+
+### FSL external dependency
+FSL is not installed by pip or by this package. The main preprocessing workflow
+requires both the `bet` and `robustfov` commands. Install FSL using the
+[official FSL installation instructions](https://fsl.fmrib.ox.ac.uk/fsl/docs/#/install/index),
+then verify that both commands are available:
+
+```bash
+command -v bet
+command -v robustfov
+```
+
+FSL is not required when using `t2vv_render_existing` to render outputs that
+have already been preprocessed.
 
 ### MRIcroGL external dependency
 MRIcroGL is an external application and is not installed by pip or conda with
