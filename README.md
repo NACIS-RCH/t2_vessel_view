@@ -144,11 +144,11 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 python -m t2vesselviewcode.t2_vessel_view_main \
   -d /path/to/mri_dir \
   -o /path/to/output_dir \
-  -i /path/to/T1_raw.nii.gz \
+  -i /path/to/T1.nii.gz \
   -f /path/to/FLAIR.nii.gz \
-  -s /path/to/T2_tse_sag.nii.gz \
-  -c /path/to/T2_tse_cor.nii.gz \
-  -t /path/to/T2_tse_tra.nii.gz
+  -s /path/to/T2_sag.nii.gz \
+  -c /path/to/T2_cor.nii.gz \
+  -t /path/to/T2_tra.nii.gz
 ```
 
 ### Generate display panels from an existing output folder
@@ -161,8 +161,8 @@ t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
   --panels t1_overlay_overview \
   --overlay1-path /path/to/PET.nii.gz \
   --overlay1-name PET \
-  --overlay1-color green \
-  --overlay1-min 0 --overlay1-max 5
+  --overlay1-color jet \
+  --overlay1-min 2000 --overlay1-max 20000
 
 # YAML-configured 2–4 column custom overlay panel
 t2vv_render_existing --source-dir /path/to/output_dir/T2VesselView_* \
@@ -176,9 +176,7 @@ T1, automatically selected T2, and FLAIR bases; cardinal/surgical views; overlay
 colour, opacity and window values; all erosion depths; and slice sweeps. Overlays
 are optional for each slot, so a slot can display only its structural base.
 Custom erosion composites are saved at every depth; slice sweeps use the single
-YAML `slice_erode_depth` (default `35`, corresponding to prefix `035`). Exact
-0/1 binary overlays are detected automatically and shown in legends as a solid
-foreground-value colour swatch without numeric endpoints. For left/right
+YAML `slice_erode_depth` (default `35`, corresponding to prefix `035`). For left/right
 sagittal, surgical and ATO views, custom T2 selection prefers the matching-side
 sagittal acquisition, then a generic sagittal acquisition; it never substitutes
 the opposite-side sagittal acquisition.
@@ -207,7 +205,7 @@ pptx_name: longitudinal_comparison
 
 This writes `PowerPoints/longitudinal_comparison.pptx`. Paths are not accepted.
 
-### Brand-new display and slice angles
+### User-specified display and slice angles
 
 Add new (non-preset) camera directions with repeatable CLI options:
 
@@ -233,17 +231,17 @@ nearest direction inherits its normal T2/laterality rule. Exact ties prefer T2
 opposite-side unilateral sagittal image is never substituted. Slice-plane
 values do not affect T2 source selection.
 
-### Named extra T1-like structural images
+### Named extra structural images
 
 Repeat `--extra-image NAME=PATH` to preprocess additional T1-like images such
-as post-contrast or prior-time-point T1:
+as post-contrast or T1 from different acquisition:
 
 ```bash
 t2vesselview \
   -d /path/to/mri_dir \
   -i /path/to/current_T1.nii.gz \
   --extra-image t1_gd=/path/to/T1_Gd.nii.gz \
-  --extra-image t1_prior=/path/to/prior_T1.nii.gz
+  --extra-image t1_prior=/path/to/extra_T1.nii.gz
 ```
 
 Each extra is reoriented, N4-corrected, affine registered to the main T1, and
@@ -268,10 +266,10 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 python -m t2vesselviewcode.t2_vessel_view_main \
   -d /path/to/mri_dir \
   -o /path/to/output_dir \
-  -i /path/to/T1_raw.nii.gz \
+  -i /path/to/T1.nii.gz \
   -f /path/to/FLAIR.nii.gz \
-  --t2_sag_left  /path/to/T2_tse_sag_l.nii.gz \
-  --t2_sag_right /path/to/T2_tse_sag_r.nii.gz
+  --t2_sag_left  /path/to/T2_sag_l.nii.gz \
+  --t2_sag_right /path/to/T2_sag_r.nii.gz
 ```
 
 ## Inputs
