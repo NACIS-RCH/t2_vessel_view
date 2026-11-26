@@ -53,7 +53,7 @@ conda activate t2vv
 python -m pip install -e .
 ```
 
-Tested on macOS; Python version as per `t2vv_env.yml`/`pyproject.toml`.
+Tested on macOS and Linux; Python version as per `t2vv_env.yml`/`pyproject.toml`.
 
 ### FSL external dependency
 FSL is not installed by pip or by this package. The main preprocessing workflow
@@ -204,6 +204,12 @@ pptx_name: longitudinal_comparison
 ```
 
 This writes `PowerPoints/longitudinal_comparison.pptx`. Paths are not accepted.
+
+
+### Default display angles
+
+![Default display angles](docs/default_angles_figure.png)
+
 
 ### User-specified display and slice angles
 
