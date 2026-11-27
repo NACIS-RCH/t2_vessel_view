@@ -301,3 +301,4 @@ python -m t2vesselviewcode.t2_vessel_view_main \
 
 ## License 
 
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
