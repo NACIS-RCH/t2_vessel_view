@@ -5,10 +5,111 @@ import os
 import tempfile
 import shutil
 import subprocess
+import signal
 import re
 import glob
 
 from . import dir_structure
+
+
+def _file_signature(path):
+    """Return a lightweight signature used to detect a new/updated output."""
+    try:
+        stat_result = os.stat(path)
+        return (stat_result.st_size, stat_result.st_mtime_ns)
+    except OSError:
+        return None
+
+
+def _stop_process_group(process, grace_s=5):
+    """Stop only the launched render job, including its wrapper/child processes."""
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    else:
+        process.terminate()
+
+    try:
+        return process.communicate(timeout=grace_s)
+    except subprocess.TimeoutExpired:
+        if os.name == "posix":
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        else:
+            process.kill()
+        return process.communicate()
+
+
+def _run_mricrogl_command(
+    cmd,
+    timeout_s,
+    output_dir,
+    expected_outputs=None,
+    render_description="MRIcroGL render",
+):
+    """Run one MRIcroGL batch and report timeout completeness accurately."""
+    expected_outputs = list(expected_outputs or [])
+    before = {path: _file_signature(path) for path in expected_outputs}
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=(os.name == "posix"),
+    )
+
+    try:
+        stdout, stderr = process.communicate(timeout=int(timeout_s))
+    except subprocess.TimeoutExpired:
+        stdout, stderr = _stop_process_group(process)
+        after = {path: _file_signature(path) for path in expected_outputs}
+        completed = [
+            path
+            for path in expected_outputs
+            if after[path] is not None and after[path] != before[path]
+        ]
+
+        if expected_outputs and len(completed) == len(expected_outputs):
+            print(
+                f"[WARNING] {render_description} timed out after "
+                f"{int(timeout_s)}s during shutdown, but all "
+                f"{len(expected_outputs)} expected screenshots were created."
+            )
+            return stdout, stderr
+
+        if expected_outputs:
+            missing = [path for path in expected_outputs if path not in completed]
+            missing_preview = "\n".join(
+                f"  - {os.path.relpath(path, output_dir)}"
+                for path in missing[:10]
+            )
+            if len(missing) > 10:
+                missing_preview += f"\n  - ... and {len(missing) - 10} more"
+            completeness = (
+                f"{len(completed)} of {len(expected_outputs)} expected "
+                "screenshots were created or updated."
+            )
+            missing_text = f"\nMissing or unchanged outputs:\n{missing_preview}"
+        else:
+            completeness = "The requested output batch was not confirmed complete."
+            missing_text = ""
+
+        raise RuntimeError(
+            f"{render_description} timed out after {int(timeout_s)}s. "
+            f"{completeness} Partial outputs remain in: {output_dir}"
+            f"{missing_text}"
+        )
+
+    if process.returncode != 0:
+        raise RuntimeError(
+            f"MRIcroGL failed (code {process.returncode}). "
+            f"stderr: {stderr}\nstdout: {stdout}"
+        )
+    return stdout, stderr
 
 
 def resolve_mricrogl_executable(user_path=None):
@@ -762,18 +863,25 @@ def render_volume_and_save_pngs_mricrogl(
         # Run MRIcroGL (ensure INI prefs are set for deterministic screenshots)
         _configure_mricrogl_ini_preferences()
         cmd = [mricrogl_path, '-s', tmp_script]
-        try:
-            proc = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=120)
-            if proc.returncode != 0:
-                raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
-        except subprocess.TimeoutExpired as e:
-            # Attempt to terminate gracefully, then continue
-            try:
-                # On macOS, run killall as a last resort (may affect other instances)
-                subprocess.run(['pkill', '-f', mricrogl_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
-            print(f"[WARNING] MRIcroGL timed out after 120s. Proceeding. Partial renders may have been saved.\n{e}")
+        expected_outputs = []
+        for tmp_img in tmp_imgs:
+            base = os.path.splitext(os.path.basename(tmp_img))[0]
+            for azimuth, elevation, label in angles:
+                expected_outputs.append(
+                    os.path.join(
+                        output_dir,
+                        'by_angle',
+                        str(label),
+                        f"{label}-{azimuth}-{elevation}-{base}.png",
+                    )
+                )
+        _run_mricrogl_command(
+            cmd,
+            timeout_s=120,
+            output_dir=output_dir,
+            expected_outputs=expected_outputs,
+            render_description="MRIcroGL volume render",
+        )
 
         print(f"[INFO] MRIcroGL renders saved under: {output_dir}")
     finally:
@@ -901,25 +1009,65 @@ def render_quant_map_mm_panel_slices_mricrogl(
 
         _configure_mricrogl_ini_preferences()
         cmd = [mricrogl_path, '-s', tmp_script]
-        try:
-            proc = subprocess.run(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                timeout=int(timeout_s),
+        expected_outputs = []
+        sagittal_labels = {
+            "left",
+            "right",
+            "surg_left_lat",
+            "surg_right_lat",
+            "surg_left_ato",
+            "surg_right_ato",
+        }
+        enabled_families = []
+        if bool(save_structural_outputs):
+            enabled_families.append("structural")
+        if bool(save_overlay_outputs):
+            enabled_families.append("overlay")
+
+        for tmp_img in tmp_imgs:
+            base = os.path.splitext(os.path.basename(tmp_img))[0]
+            for label, _brain_az, _brain_el, _clip_az, _clip_el in slice_angles:
+                for family in enabled_families:
+                    expected_outputs.append(
+                        os.path.join(
+                            output_dir,
+                            f"{label}_erosion_{family}",
+                            f"{label}_erosion_{family}_{base}.png",
+                        )
+                    )
+
+            should_save_slices = bool(slice_all_depths) or (
+                bool(main_erode_prefix)
+                and (str(main_erode_prefix) + "_eroded") in base
             )
-            if proc.returncode != 0:
-                raise RuntimeError(f"MRIcroGL failed (code {proc.returncode}). stderr: {proc.stderr}\nstdout: {proc.stdout}")
-        except subprocess.TimeoutExpired as e:
-            try:
-                subprocess.run(['pkill', '-f', mricrogl_path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            except Exception:
-                pass
-            print(
-                f"[WARNING] MRIcroGL slice render timed out after {int(timeout_s)}s. "
-                f"Proceeding with partial outputs.\n{e}"
-            )
+            if should_save_slices:
+                for label, _brain_az, _brain_el, _clip_az, _clip_el in slice_angles:
+                    slice_end = int(slice_z_end)
+                    if str(label).lower() in sagittal_labels:
+                        slice_end = int(
+                            round(
+                                float(sagittal_slice_end_fraction)
+                                * float(slice_h_divisor)
+                            )
+                        )
+                    for z_value in range(int(slice_z_start), slice_end + 1):
+                        for family in enabled_families:
+                            expected_outputs.append(
+                                os.path.join(
+                                    output_dir,
+                                    f"{label}_slices_{family}",
+                                    f"{label}_slices_{family}-"
+                                    f"{z_value:03d}-{base}.png",
+                                )
+                            )
+
+        _run_mricrogl_command(
+            cmd,
+            timeout_s=timeout_s,
+            output_dir=output_dir,
+            expected_outputs=expected_outputs,
+            render_description="MRIcroGL slice render",
+        )
 
         print(f"[INFO] MRIcroGL quant_map_mm_panel raw screenshots saved under: {output_dir}")
     finally:

@@ -5,7 +5,6 @@ import os
 import sys
 import tempfile
 import unittest
-from types import SimpleNamespace
 from unittest import mock
 
 import nibabel as nib
@@ -94,7 +93,7 @@ class TestCustomSliceRender(unittest.TestCase):
             def fake_run(command, **_kwargs):
                 with open(command[-1], encoding="utf-8") as stream:
                     captured["script"] = stream.read()
-                return SimpleNamespace(returncode=0, stdout="", stderr="")
+                return "", ""
 
             with mock.patch.object(
                 volume_rendering,
@@ -104,8 +103,8 @@ class TestCustomSliceRender(unittest.TestCase):
                 volume_rendering,
                 "_configure_mricrogl_ini_preferences",
             ), mock.patch.object(
-                volume_rendering.subprocess,
-                "run",
+                volume_rendering,
+                "_run_mricrogl_command",
                 side_effect=fake_run,
             ):
                 volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
@@ -145,7 +144,7 @@ class TestCustomSliceRender(unittest.TestCase):
             def fake_run(command, **_kwargs):
                 with open(command[-1], encoding="utf-8") as stream:
                     captured["script"] = stream.read()
-                return SimpleNamespace(returncode=0, stdout="", stderr="")
+                return "", ""
 
             with mock.patch.object(
                 volume_rendering,
@@ -155,8 +154,8 @@ class TestCustomSliceRender(unittest.TestCase):
                 volume_rendering,
                 "_configure_mricrogl_ini_preferences",
             ), mock.patch.object(
-                volume_rendering.subprocess,
-                "run",
+                volume_rendering,
+                "_run_mricrogl_command",
                 side_effect=fake_run,
             ):
                 volume_rendering.render_quant_map_mm_panel_slices_mricrogl(
@@ -182,6 +181,88 @@ class TestCustomSliceRender(unittest.TestCase):
                 save_structural_outputs=False,
                 save_overlay_outputs=False,
             )
+
+    def test_timeout_reports_partial_batch_and_keeps_outputs(self):
+        class TimedOutProcess:
+            pid = 4242
+
+            def communicate(self, timeout=None):
+                raise volume_rendering.subprocess.TimeoutExpired(
+                    cmd=["MRIcroGL"],
+                    timeout=timeout,
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            first_output = os.path.join(temp_dir, "first.png")
+            second_output = os.path.join(temp_dir, "second.png")
+
+            def stop_one_partial_batch(_process):
+                with open(first_output, "wb") as stream:
+                    stream.write(b"png")
+                return "", ""
+
+            with mock.patch.object(
+                volume_rendering.subprocess,
+                "Popen",
+                return_value=TimedOutProcess(),
+            ), mock.patch.object(
+                volume_rendering,
+                "_stop_process_group",
+                side_effect=stop_one_partial_batch,
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "1 of 2 expected screenshots",
+                ):
+                    volume_rendering._run_mricrogl_command(
+                        ["MRIcroGL", "-s", "script.py"],
+                        timeout_s=120,
+                        output_dir=temp_dir,
+                        expected_outputs=[first_output, second_output],
+                    )
+
+            self.assertTrue(os.path.isfile(first_output))
+            self.assertFalse(os.path.exists(second_output))
+
+    def test_timeout_after_all_outputs_treats_batch_as_complete(self):
+        class TimedOutProcess:
+            pid = 4242
+
+            def communicate(self, timeout=None):
+                raise volume_rendering.subprocess.TimeoutExpired(
+                    cmd=["MRIcroGL"],
+                    timeout=timeout,
+                )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            expected_outputs = [
+                os.path.join(temp_dir, "first.png"),
+                os.path.join(temp_dir, "second.png"),
+            ]
+
+            def stop_complete_batch(_process):
+                for path in expected_outputs:
+                    with open(path, "wb") as stream:
+                        stream.write(b"png")
+                return "", ""
+
+            with mock.patch.object(
+                volume_rendering.subprocess,
+                "Popen",
+                return_value=TimedOutProcess(),
+            ), mock.patch.object(
+                volume_rendering,
+                "_stop_process_group",
+                side_effect=stop_complete_batch,
+            ):
+                result = volume_rendering._run_mricrogl_command(
+                    ["MRIcroGL", "-s", "script.py"],
+                    timeout_s=120,
+                    output_dir=temp_dir,
+                    expected_outputs=expected_outputs,
+                )
+
+            self.assertEqual(result, ("", ""))
 
 
 if __name__ == "__main__":
